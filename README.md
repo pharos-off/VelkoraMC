@@ -1,4 +1,4 @@
-# 🎮 CraftLauncher
+# CraftLauncher
 
 Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur exceptionnelle avec authentification Microsoft, gestion des profils, optimisation des ressources, et bien plus encore!
 
@@ -220,3 +220,4 @@ Rejoignez notre communauté et aidez-nous à améliorer CraftLauncher !
 [⭐ Star sur GitHub](https://github.com/pharos-off/minecraft-launcher) • [🐛 Signaler un bug](https://github.com/pharos-off/minecraft-launcher/issues) • [💬 Discuter](https://github.com/pharos-off/minecraft-launcher/discussions)
 
 </div>
+
