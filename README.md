@@ -108,7 +108,7 @@ Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur
 Avez-vous trouvé un bug ou avez une suggestion ?
 - 📝 Ouvrez une [Issue](https://github.com/pharos-off/minecraft-launcher/issues)
 - 🤝 Créez une [Pull Request](https://github.com/pharos-off/minecraft-launcher/pulls)
-- 💬 Contactez-nous : [contact-craftlauncher@gmail.com](mailto:contact.craftlauncher@gmail.com)
+- 💬 Contactez-nous : [contact.craftlauncher@gmail.com](mailto:contact.craftlauncher@gmail.com)
 
 ---
 
@@ -174,7 +174,7 @@ En utilisant ce logiciel, vous acceptez les termes de cette licence.
 
 ## 📞 Contact
 
-- **Email** : [contact-craftlauncher@gmail.com](mailto:contact.craftlauncher@gmail.com)
+- **Email** : [contact.craftlauncher@gmail.com](mailto:contact.craftlauncher@gmail.com)
 - **GitHub** : [@Pharsos](https://github.com/pharos-off)
 - **Discord** : Rejoignez notre serveur communautaire
 
