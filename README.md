@@ -2,7 +2,7 @@
 
 Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur exceptionnelle avec authentification Microsoft, gestion des profils, optimisation des ressources, et bien plus encore!
 
-![Version](https://img.shields.io/badge/version-2.5.2-blue.svg)
+![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-CLv1-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 
@@ -171,20 +171,13 @@ En utilisant ce logiciel, vous acceptez les termes de cette licence.
 
 ## 📈 Feuille de route
 
-### v2.5.2 ✅ (Actuelle)
-- ✅ Authentification Microsoft
-- ✅ Gestion des profils
-- ✅ Gestionnaire de mods
-- ✅ Discord RPC
-- ✅ Mises à jour automatiques
-
-### v3.1.0 🚀 (Prochainement)
+### v5.0.0 🚀 (Prochainement)
 - ⏳ Téléchargement de mods depuis CurseForge
 - ⏳ Gestionnaire de sauvegardes
 - ⏳ Support des datapacks
 - ⏳ Statistiques avancées
 
-### v4.0.0 🎯 (Futur)
+### v6.0.0 🎯 (Futur)
 - ⏳ Support natif macOS/Linux
 - ⏳ Installation de shaders
 - ⏳ Serveur multi-joueurs intégré
@@ -209,6 +202,7 @@ Rejoignez notre communauté et aidez-nous à améliorer CraftLauncher !
 [⭐ Star sur GitHub](https://github.com/pharos-off/minecraft-launcher) • [🐛 Signaler un bug](https://github.com/pharos-off/minecraft-launcher/issues) • [💬 Discuter](https://github.com/pharos-off/minecraft-launcher/discussions)
 
 </div>
+
 
 
 
