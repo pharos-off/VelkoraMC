@@ -4,18 +4,33 @@ Copyright © 2026 Eloan. Tous droits réservés.
 
 Ce logiciel est un logiciel propriétaire.
 
-L’auteur accorde à l’utilisateur une licence personnelle, non exclusive,
-non transférable, permettant uniquement l’utilisation du logiciel.
+L’auteur accorde à toute personne une licence limitée,
+non exclusive, non transférable, permettant uniquement :
+
+- la consultation du code source sur ce dépôt GitHub
+- la modification du code exclusivement dans le cadre
+  d’une contribution via Pull Request sur ce dépôt officiel
+
+Toute autre modification, copie, utilisation ou diffusion
+du code ou du logiciel est strictement interdite.
+
+Les contributions soumises via Pull Request impliquent
+l’acceptation expresse que :
+
+- tous les droits patrimoniaux sur la contribution sont
+  cédés intégralement et définitivement à l’auteur
+- l’auteur peut utiliser, modifier, redistribuer ou
+  intégrer la contribution sans restriction
+- le contributeur renonce à toute revendication future
 
 Il est strictement interdit de :
 - copier, redistribuer ou revendre le logiciel
-- modifier, adapter ou créer des œuvres dérivées
-- décompiler, désassembler ou tenter d’extraire le code source
-- publier tout ou partie du code ou du logiciel
+- publier une version modifiée ailleurs
+- utiliser tout ou partie du code en dehors de ce dépôt
+- décompiler ou tenter d’extraire le logiciel distribué
 
-Tous les droits non expressément accordés sont réservés à l’auteur.
+Toute utilisation non autorisée constitue une violation
+du Code de la propriété intellectuelle (France).
 
-Toute utilisation non autorisée constitue une violation du Code
-de la propriété intellectuelle et peut donner lieu à des poursuites.
-
-En utilisant ce logiciel, vous acceptez les termes de cette licence.
+En contribuant ou en utilisant ce dépôt, vous acceptez
+l’intégralité des termes de cette licence.
