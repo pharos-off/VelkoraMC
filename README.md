@@ -8,50 +8,6 @@ Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur
 
 ---
 
-## ✨ Fonctionnalités principales
-
-### 🔐 Authentification
-- ✅ **Authentification Microsoft** - Connexion sécurisée avec votre compte Microsoft
-- ✅ **Mode hors-ligne** - Jouez sans connexion Internet
-- ✅ **Gestion de compte** - Voir et gérer vos informations de compte
-
-### ⚙️ Gestion des profils
-- ✅ **Profils multiples** - Créez plusieurs profils avec différentes versions de Minecraft
-- ✅ **Duplication rapide** - Dupliquez facilement un profil existant
-- ✅ **Édition intuitive** - Modifiez vos profils en quelques clics
-
-### 🧩 Gestionnaire de Mods
-- ✅ **Gestion complète** - Importez, activez/désactivez et supprimez des mods
-- ✅ **Aperçu rapide** - Consultez la liste de vos mods avec infos (version, taille)
-- ✅ **Accès facile** - Ouvrez directement le dossier mods depuis l'app
-
-### 📊 Statistiques et optimisation
-- ✅ **Optimisation RAM** - Allocation automatique basée sur vos ressources système
-- ✅ **Historique de jeu** - Suivez votre temps de jeu et vos sessions
-- ✅ **Infos système** - Consultez l'utilisation du stockage et la RAM disponible
-
-### 🎮 Intégrations
-- ✅ **Discord Rich Presence** - Affichez votre statut de jeu sur Discord
-- ✅ **Actualités Minecraft** - Restez informé des dernières news officielles
-- ✅ **Partenaires** - Découvrez les serveurs et projets partenaires
-
-### 🔔 Notifications et paramètres
-- ✅ **Notifications en temps réel** - Recevez des alertes pour les événements importants
-- ✅ **Paramètres complets** - Personnalisez chaque aspect de l'application
-- ✅ **Thème moderne** - Interface élégante et responsive
-
-### 🚀 Mises à jour automatiques
-- ✅ **Vérification automatique** - L'app cherche les nouvelles versions au démarrage
-- ✅ **Installation en 1 clic** - Mettez à jour directement depuis les paramètres
-- ✅ **Téléchargement depuis GitHub** - Mises à jour fiables et sécurisées
-
-### 📜 Conditions d'utilisation
-- ✅ **Acceptation une fois** - Les conditions s'affichent une seule fois après la connexion
-- ✅ **Licence MIT** - Utilisez et modifiez librement le code source
-- ✅ **Transparent** - Voir exactement ce que nous faisons de vos données
-
----
-
 ## 🚀 Installation
 
 ### Depuis les releases
@@ -161,6 +117,7 @@ Rejoignez notre communauté et aidez-nous à améliorer CraftLauncher !
 [⭐ Star sur GitHub](https://github.com/pharos-off/minecraft-launcher) • [🐛 Signaler un bug](https://github.com/pharos-off/minecraft-launcher/issues) • [💬 Discuter](https://github.com/pharos-off/minecraft-launcher/discussions)
 
 </div>
+
 
 
 
