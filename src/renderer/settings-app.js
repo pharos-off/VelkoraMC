@@ -155,6 +155,7 @@ async function loadDiscordSettings() {
       if (detailsToggle) detailsToggle.checked = discordSettings.showDetails !== false;
       if (imageToggle) imageToggle.checked = discordSettings.showImage !== false;
       
+      // Mettre à jour le statut de la connexion
       if (connectionStatusEl) {
         if (discordSettings.isConnected) {
           connectionStatusEl.innerHTML = '<span style="color: #10b981;">✓ Connecte</span>';
@@ -168,6 +169,11 @@ async function loadDiscordSettings() {
   }
 }
 
+// ✅ Écouter les changements de statut Discord en temps réel
+ipcRenderer.on('discord-status-changed', (event, status) => {
+  console.log('📡 Discord status updated:', status);
+  loadDiscordSettings();
+});
 
 function setupSearchFunctionality() {
   const searchInput = document.querySelector('.search-input');
@@ -178,7 +184,7 @@ function setupSearchFunctionality() {
     
     if (searchTerm === '') {
       document.querySelectorAll('.menu-category').forEach(btn => {
-        btn.style.display = 'flex'; // ✅ CHANGE 'block' EN 'flex'
+        btn.style.display = 'flex';
       });
       return;
     }
@@ -201,9 +207,342 @@ function setupSearchFunctionality() {
       const matches = keywords.some(keyword => keyword.includes(searchTerm)) ||
                       btnText.includes(searchTerm);
       
-      btn.style.display = matches ? 'flex' : 'none'; // ✅ CHANGE 'block' EN 'flex'
+      btn.style.display = matches ? 'flex' : 'none';
     });
   });
+}
+
+/**
+ * ============================================
+ * DISCORD RPC TEST HANDLER - VERSION COMPLÈTE
+ * ============================================
+ */
+
+class DiscordTestManager {
+  constructor() {
+    this.testButton = null;
+    this.statusIndicator = null;
+    this.statusText = null;
+    this.connectionInfo = null;
+    this.lastTestTime = 0;
+    this.testCooldown = 3000; // 3 secondes
+    this.autoCheckInterval = null;
+  }
+
+  init() {
+    setTimeout(() => {
+      this.testButton = document.getElementById('test-discord-btn');
+      this.statusIndicator = document.getElementById('discord-status-indicator');
+      this.statusText = document.getElementById('discord-status-text');
+      this.connectionInfo = document.getElementById('discord-connection-info');
+
+      if (this.testButton) {
+        this.setupTestButton();
+      }
+
+      this.setupEventListeners();
+      this.checkInitialStatus();
+      this.startAutoCheck();
+    }, 500);
+  }
+
+  setupTestButton() {
+    this.testButton.addEventListener('click', () => this.handleTest());
+  }
+
+  setupEventListeners() {
+    ipcRenderer.on('discord-connected', (event, user) => {
+      this.updateStatus('connected', user);
+      this.showNotification('✓ Discord connecté !', 'success');
+    });
+
+    ipcRenderer.on('discord-disconnected', () => {
+      this.updateStatus('disconnected');
+      this.showNotification('Discord déconnecté', 'warning');
+    });
+
+    ipcRenderer.on('discord-connecting', () => {
+      this.updateStatus('connecting');
+    });
+
+    ipcRenderer.on('discord-error', (event, error) => {
+      this.updateStatus('error', null, error);
+      this.showNotification('Erreur Discord: ' + error.message, 'error');
+    });
+
+    ipcRenderer.on('discord-activity-updated', (event, activity) => {
+      console.log('Discord activity updated:', activity.details);
+    });
+  }
+
+  async checkInitialStatus() {
+    try {
+      const status = await ipcRenderer.invoke('get-discord-status');
+      this.updateStatus(
+        status.connected ? 'connected' : 'disconnected',
+        status.user
+      );
+    } catch (error) {
+      console.error('Error checking status:', error);
+    }
+  }
+
+  async handleTest() {
+    const now = Date.now();
+    if (now - this.lastTestTime < this.testCooldown) {
+      const remaining = Math.ceil((this.testCooldown - (now - this.lastTestTime)) / 1000);
+      this.showNotification(`⏳ Attendez ${remaining}s avant de retester`, 'warning');
+      return;
+    }
+
+    this.setButtonLoading(true);
+
+    try {
+      const result = await ipcRenderer.invoke('test-discord-rpc');
+      this.lastTestTime = now;
+
+      if (result.success) {
+        this.handleTestSuccess(result);
+      } else {
+        this.handleTestError(result);
+      }
+
+      if (result.status) {
+        this.updateStatus(
+          result.status.connected ? 'connected' : 'disconnected',
+          result.user,
+          null,
+          result.status
+        );
+      }
+
+    } catch (error) {
+      this.handleTestException(error);
+    } finally {
+      this.setButtonLoading(false);
+    }
+  }
+
+  handleTestSuccess(result) {
+    const username = result.user?.username || 'Utilisateur';
+    const discriminator = result.user?.discriminator;
+    const fullUsername = discriminator && discriminator !== '0' 
+      ? `${username}#${discriminator}` 
+      : username;
+
+    this.showNotification(
+      `✓ Discord connecté !\nCompte: ${fullUsername}`,
+      'success'
+    );
+
+    this.animateSuccess();
+  }
+
+  handleTestError(result) {
+    let errorMessage = '✗ Discord non disponible';
+
+    if (result.status) {
+      if (result.status.connecting) {
+        errorMessage = '⏳ Connexion en cours...\nVeuillez patienter.';
+      } else if (result.status.reconnectAttempts > 0) {
+        errorMessage = `🔄 Reconnexion (${result.status.reconnectAttempts})...`;
+      } else {
+        errorMessage = result.message || errorMessage;
+      }
+    }
+
+    this.showNotification(errorMessage, 'error');
+  }
+
+  handleTestException(error) {
+    console.error('Erreur test Discord:', error);
+
+    let errorMsg = '✗ Erreur lors du test';
+
+    if (error.message.includes('Discord is not running')) {
+      errorMsg = '✗ Discord n\'est pas lancé\nVeuillez démarrer Discord et réessayer.';
+    } else if (error.message.includes('timeout')) {
+      errorMsg = '✗ Délai d\'attente dépassé\nDiscord ne répond pas.';
+    } else {
+      errorMsg = `✗ Erreur: ${error.message}`;
+    }
+
+    this.showNotification(errorMsg, 'error');
+  }
+
+  updateStatus(status, user = null, error = null, fullStatus = null) {
+    if (this.statusIndicator) {
+      this.statusIndicator.className = 'discord-status-indicator';
+      this.statusIndicator.classList.add(status);
+    }
+
+    if (this.statusText) {
+      let statusMessage = 'Non connecté';
+
+      switch (status) {
+        case 'connected':
+          statusMessage = user 
+            ? `Connecté (${user.username})`
+            : 'Connecté';
+          break;
+        case 'connecting':
+          statusMessage = 'Connexion...';
+          break;
+        case 'disconnected':
+          statusMessage = 'Non connecté';
+          break;
+        case 'error':
+          statusMessage = `Erreur: ${error?.message || 'Inconnue'}`;
+          break;
+      }
+
+      this.statusText.textContent = statusMessage;
+    }
+
+    if (this.connectionInfo && fullStatus) {
+      let infoHTML = '';
+
+      if (fullStatus.connected && user) {
+        infoHTML = `
+          <div class="connection-detail">
+            <span class="detail-label">Utilisateur:</span>
+            <span class="detail-value">${user.username}${user.discriminator && user.discriminator !== '0' ? '#' + user.discriminator : ''}</span>
+          </div>
+          <div class="connection-detail">
+            <span class="detail-label">ID:</span>
+            <span class="detail-value">${user.id || 'N/A'}</span>
+          </div>
+        `;
+      } else if (fullStatus.reconnectAttempts > 0) {
+        infoHTML = `
+          <div class="connection-detail">
+            <span class="detail-label">Tentatives de reconnexion:</span>
+            <span class="detail-value">${fullStatus.reconnectAttempts}</span>
+          </div>
+        `;
+      }
+
+      this.connectionInfo.innerHTML = infoHTML;
+    }
+
+    if (this.testButton) {
+      if (status === 'connected') {
+        this.testButton.classList.add('success');
+        this.testButton.classList.remove('error');
+      } else if (status === 'error') {
+        this.testButton.classList.add('error');
+        this.testButton.classList.remove('success');
+      } else {
+        this.testButton.classList.remove('success', 'error');
+      }
+    }
+  }
+
+  setButtonLoading(loading) {
+    if (!this.testButton) return;
+
+    this.testButton.disabled = loading;
+
+    if (loading) {
+      this.testButton.dataset.originalText = this.testButton.textContent;
+      this.testButton.innerHTML = `
+        <div class="btn-content">
+          <span class="spinner"></span>
+          <span>Test en cours...</span>
+        </div>
+      `;
+      this.testButton.classList.add('loading');
+    } else {
+      this.testButton.textContent = this.testButton.dataset.originalText || 'Tester la connexion Discord';
+      this.testButton.classList.remove('loading');
+    }
+  }
+
+  animateSuccess() {
+    if (!this.testButton) return;
+
+    this.testButton.classList.add('pulse-success');
+    setTimeout(() => {
+      this.testButton.classList.remove('pulse-success');
+    }, 1000);
+  }
+
+  showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `toast-notification toast-${type}`;
+    
+    const icon = this.getNotificationIcon(type);
+    
+    notification.innerHTML = `
+      <div class="toast-icon">${icon}</div>
+      <div class="toast-content">
+        <div class="toast-message">${message.replace(/\n/g, '<br>')}</div>
+      </div>
+      <button class="toast-close">&times;</button>
+    `;
+
+    let container = document.getElementById('toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toast-container';
+      document.body.appendChild(container);
+    }
+
+    container.appendChild(notification);
+
+    const closeBtn = notification.querySelector('.toast-close');
+    closeBtn.addEventListener('click', () => {
+      this.removeNotification(notification);
+    });
+
+    setTimeout(() => notification.classList.add('show'), 10);
+
+    setTimeout(() => {
+      this.removeNotification(notification);
+    }, 5000);
+  }
+
+  removeNotification(notification) {
+    notification.classList.remove('show');
+    setTimeout(() => {
+      notification.remove();
+    }, 300);
+  }
+
+  getNotificationIcon(type) {
+    const icons = {
+      success: '✓',
+      error: '✗',
+      warning: '⚠',
+      info: 'ℹ'
+    };
+    return icons[type] || icons.info;
+  }
+
+  startAutoCheck() {
+    this.autoCheckInterval = setInterval(() => {
+      this.checkInitialStatus();
+    }, 30000);
+  }
+
+  destroy() {
+    if (this.autoCheckInterval) {
+      clearInterval(this.autoCheckInterval);
+    }
+
+    ipcRenderer.removeAllListeners('discord-connected');
+    ipcRenderer.removeAllListeners('discord-disconnected');
+    ipcRenderer.removeAllListeners('discord-connecting');
+    ipcRenderer.removeAllListeners('discord-error');
+    ipcRenderer.removeAllListeners('discord-activity-updated');
+  }
+}
+
+let discordTestManager = null;
+
+function initDiscordTest() {
+  discordTestManager = new DiscordTestManager();
+  discordTestManager.init();
 }
 
 function renderSettings() {
@@ -226,33 +565,33 @@ function renderSettings() {
         </div>
         <div class="settings-menu">
           <button class="menu-category active" data-tab="game">
-            <span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="1" ry="1"></rect><path d="M12 19v.01"></path></svg></span><span class="menu-text">Game</span>
+            <span class="menu-icon"><i class="bi bi-controller"></i></span><span class="menu-text">Game</span>
           </button>
           <button class="menu-category" data-tab="general">
-            <span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"></circle><path d="M12 1v6m0 6v6"></path><path d="M4.22 4.22l4.24 4.24m5.08 0l4.24-4.24"></path><path d="M1 12h6m6 0h6"></path><path d="M4.22 19.78l4.24-4.24m5.08 0l4.24 4.24"></path></svg></span><span class="menu-text">General</span>
+            <span class="menu-icon"><i class="bi bi-gear"></i></span><span class="menu-text">General</span>
           </button>
           <button class="menu-category" data-tab="account">
-            <span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span><span class="menu-text">Account</span>
+            <span class="menu-icon"><i class="bi bi-person-circle"></i></span><span class="menu-text">Account</span>
           </button>
           <button class="menu-category" data-tab="storage">
-            <span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2.707.7l-8.646-3.524a2 2 0 0 0-2.153 0l-8.646 3.524A2 2 0 0 1 2 19Zm0 0V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v14Z"></path></svg></span><span class="menu-text">Storage</span>
+            <span class="menu-icon"><i class="bi bi-hdd"></i></span><span class="menu-text">Storage</span>
           </button>
           <button class="menu-category" data-tab="notifications">
-            <span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg></span><span class="menu-text">Notifications</span>
+            <span class="menu-icon"><i class="bi bi-bell"></i></span><span class="menu-text">Notifications</span>
           </button>
           <button class="menu-category" data-tab="discord">
-            <span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg></span><span class="menu-text">Discord</span>
+            <span class="menu-icon"><i class="bi bi-discord"></i></span><span class="menu-text">Discord</span>
           </button>
           <button class="menu-category" data-tab="updates">
-            <span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></span><span class="menu-text">Mises a jour</span>
+            <span class="menu-icon"><i class="bi bi-download"></i></span><span class="menu-text">Mises a jour</span>
           </button>
           <button class="menu-category" data-tab="about">
-            <span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg></span><span class="menu-text">A propos</span>
+            <span class="menu-icon"><i class="bi bi-info-circle"></i></span><span class="menu-text">A propos</span>
           </button>
         </div>
 
         <div class="settings-footer">
-          <p>CraftLauncher v3.0.0</p>
+          <p>CraftLauncher v3.1.56</p>
           <p>2026 Tous droits reserves</p>
         </div>
       </div>
@@ -468,15 +807,32 @@ function renderSettings() {
 
         <div class="settings-section" id="discord-tab" style="display: none;">
           <h2>Discord</h2>
+          
+          <!-- État de la connexion avec bouton de test intégré -->
           <div class="settings-card">
-            <h3>Etat de la connexion</h3>
-            <div class="setting-item">
-              <label>Statut Discord RPC</label>
-              <p id="discord-connection-status" style="color: #d1d5db; padding: 10px 0; font-weight: 500;">Chargement...</p>
-              <p class="help-text">Affiche l'etat de connexion a Discord</p>
+            <h3>État de la connexion</h3>
+            <div class="discord-connection-status">
+              <div class="status-header">
+                <div class="status-indicator-wrapper">
+                  <span id="discord-status-indicator" class="discord-status-indicator disconnected"></span>
+                  <span id="discord-status-text" class="status-text">Non connecté</span>
+                </div>
+              </div>
+              
+              <div id="discord-connection-info" class="connection-info">
+                <!-- Les détails de connexion apparaîtront ici -->
+              </div>
+            </div>
+            
+            <div class="setting-item" style="margin-top: 20px;">
+              <button id="test-discord-btn" class="btn-discord-test">
+                Tester la connexion Discord
+              </button>
+              <p class="help-text" style="margin-top: 10px;">Vérifier que Discord RPC fonctionne correctement</p>
             </div>
           </div>
 
+          <!-- Configuration Discord RPC -->
           <div class="settings-card">
             <h3>Configuration Discord RPC</h3>
             <div class="setting-item">
@@ -492,13 +848,13 @@ function renderSettings() {
                 <input type="checkbox" id="discord-status-toggle" style="width: 18px; height: 18px; margin-right: 12px; cursor: pointer;">
                 <span>Afficher votre statut de jeu</span>
               </label>
-              <p class="help-text">Affiche si vous etes en train de jouer, dans le launcher ou hors ligne</p>
+              <p class="help-text">Affiche si vous êtes en train de jouer, dans le launcher ou hors ligne</p>
             </div>
 
             <div class="setting-item" style="margin-top: 20px;">
               <label style="display: flex; align-items: center; cursor: pointer;">
                 <input type="checkbox" id="discord-details-toggle" style="width: 18px; height: 18px; margin-right: 12px; cursor: pointer;">
-                <span>Afficher les details du jeu</span>
+                <span>Afficher les détails du jeu</span>
               </label>
               <p class="help-text">Affiche la version de Minecraft et le serveur (si applicable)</p>
             </div>
@@ -512,22 +868,10 @@ function renderSettings() {
             </div>
           </div>
 
-          <div class="settings-card">
-            <h3>Actions Discord</h3>
-            <div class="setting-item">
-              <button id="test-discord-btn" class="btn-primary">Tester la connexion Discord</button>
-              <p class="help-text" style="margin-top: 15px;">Teste la connexion a Discord et affiche une notification</p>
-            </div>
-
-            <div class="setting-item" style="margin-top: 20px;">
-              <button id="reconnect-discord-btn" class="btn-secondary">Reconnecter Discord</button>
-              <p class="help-text" style="margin-top: 15px;">Force la reconnexion a Discord</p>
-            </div>
-          </div>
-
+          <!-- Boutons de sauvegarde -->
           <div class="button-group">
             <button id="save-discord-btn" class="btn-primary">Valider et sauvegarder</button>
-            <button id="reset-discord-btn" class="btn-secondary">Reinitialiser par defaut</button>
+            <button id="reset-discord-btn" class="btn-secondary">Réinitialiser par défaut</button>
           </div>
         </div>
 
@@ -588,7 +932,7 @@ function renderSettings() {
           <div class="settings-card">
             <h3>CraftLauncher</h3>
             <p style="color: #d1d5db; line-height: 1.8; margin-bottom: 20px;">
-              <strong style="color: #6366f1; font-size: 16px;">Version:</strong> 3.0.0<br>
+              <strong style="color: #6366f1; font-size: 16px;">Version:</strong> 3.1.56<br>
               <strong style="color: #6366f1;">Developpeur:</strong> Pharos<br>
               <strong style="color: #6366f1;">Licence:</strong> CLv1<br>
               <strong style="color: #6366f1;">Plateforme:</strong> Electron + Node.js
@@ -733,7 +1077,6 @@ function renderSettings() {
       refreshStorageBtn.disabled = true;
       refreshStorageBtn.textContent = '⏳ Calcul en cours...';
       
-      // Forcer le cache à expirer
       lastStorageLoadTime = 0;
       storageInfoCache = null;
       
@@ -822,26 +1165,6 @@ function renderSettings() {
         } catch (error) {
           alert('✗ Erreur');
         }
-      }
-    });
-  }
-
-  // ✅ TEST DISCORD
-  const testDiscordBtn = document.getElementById('test-discord-btn');
-  if (testDiscordBtn) {
-    testDiscordBtn.addEventListener('click', async () => {
-      const btn = testDiscordBtn;
-      btn.disabled = true;
-      btn.textContent = 'Test en cours...';
-
-      try {
-        const result = await ipcRenderer.invoke('test-discord-rpc');
-        alert(result.success ? '✓ Discord connecté !' : '✗ Discord non disponible');
-      } catch (error) {
-        alert('✗ Erreur: ' + error.message);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Tester la connexion Discord';
       }
     });
   }
@@ -942,7 +1265,6 @@ function renderSettings() {
 
         await ipcRenderer.invoke('save-settings', settings);
         
-        // ✅ Si fullscreen est activé, mettre le launcher en fullscreen
         if (settings.fullscreen) {
           ipcRenderer.send('toggle-fullscreen', true);
         } else {
@@ -1056,27 +1378,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderSettings();
   await loadSettings();
   await loadAccountInfo();
-  // Charger le cache du stockage s'il existe, sinon afficher un message
-  if (storageInfoCache) {
-    displayStorageInfo(storageInfoCache);
-  } else {
-    // Afficher un message pour cliquer sur rafraîchir
-    const usedSpaceEl = document.getElementById('storage-used-space');
-    if (usedSpaceEl) {
-      usedSpaceEl.textContent = '- GB';
-      usedSpaceEl.parentElement.style.opacity = '0.6';
-    }
-  }
+  await loadStorageInfo();
   await loadNotificationSettings();
   await loadDiscordSettings();
   
-  // Load updates info
+  // ✅ INITIALISER LE GESTIONNAIRE DISCORD
+  initDiscordTest();
+  
   const currentVersionEl = document.getElementById('current-version');
   if (currentVersionEl) {
-    currentVersionEl.textContent = '3.0.0';
+    currentVersionEl.textContent = '3.1.56';
   }
   
-  // Auto-check for updates on load
+  // 🔔 Signaler au main process que la fenêtre est prête
+  ipcRenderer.invoke('settings-window-ready').catch(err => {
+    console.warn('Erreur lors du signalement de settings-window-ready:', err);
+  });
+  
   setTimeout(() => {
     document.getElementById('check-updates-btn')?.click();
   }, 500);

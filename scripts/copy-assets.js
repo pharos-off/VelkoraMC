@@ -1,47 +1,39 @@
 const fs = require('fs');
 const path = require('path');
 
-// Créer le dossier dist/assets/music s'il n'existe pas
-const musicSrcDir = path.join(__dirname, '../assets/music');
-const musicDestDir = path.join(__dirname, '../dist/assets/music');
+// Fonction récursive pour copier un dossier
+function copyDirectory(src, dest) {
+  // Créer le dossier de destination s'il n'existe pas
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
 
-// Créer le répertoire de destination
-if (!fs.existsSync(musicDestDir)) {
-  fs.mkdirSync(musicDestDir, { recursive: true });
-  console.log('✅ Dossier dist/assets/music créé');
-}
+  const files = fs.readdirSync(src);
 
-// Copier tous les fichiers MP3
-if (fs.existsSync(musicSrcDir)) {
-  const files = fs.readdirSync(musicSrcDir);
-  
   files.forEach(file => {
-    const srcPath = path.join(musicSrcDir, file);
+    const srcPath = path.join(src, file);
+    const destPath = path.join(dest, file);
     const stats = fs.statSync(srcPath);
-    
+
     if (stats.isDirectory()) {
       // C'est un dossier, copier récursivement
-      const destSubDir = path.join(musicDestDir, file);
-      if (!fs.existsSync(destSubDir)) {
-        fs.mkdirSync(destSubDir, { recursive: true });
-      }
-      
-      const subFiles = fs.readdirSync(srcPath);
-      subFiles.forEach(subFile => {
-        const subSrcPath = path.join(srcPath, subFile);
-        const subDestPath = path.join(destSubDir, subFile);
-        fs.copyFileSync(subSrcPath, subDestPath);
-        console.log(`✅ Copié: ${file}/${subFile}`);
-      });
+      copyDirectory(srcPath, destPath);
     } else {
       // C'est un fichier
-      const destPath = path.join(musicDestDir, file);
       fs.copyFileSync(srcPath, destPath);
-      console.log(`✅ Copié: ${file}`);
+      console.log(`✅ Copied: ${path.relative(path.join(__dirname, '..'), srcPath)}`);
     }
   });
-  
-  console.log('✅ Assets musicaux copiés avec succès');
+}
+
+// Copier tout le dossier assets
+const assetsSrcDir = path.join(__dirname, '../assets');
+const assetsDestDir = path.join(__dirname, '../dist/assets');
+
+if (fs.existsSync(assetsSrcDir)) {
+  console.log('📁 Copie des assets...');
+  copyDirectory(assetsSrcDir, assetsDestDir);
+  console.log('✅ All assets copied successfully');
 } else {
-  console.warn('⚠️ Dossier assets/music non trouvé');
+  console.warn('⚠️ Assets folder not found');
 }

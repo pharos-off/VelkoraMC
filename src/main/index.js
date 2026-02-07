@@ -4,12 +4,29 @@ const Store = require('electron-store');
 const MinecraftLauncher = require('./minecraft-launcher');
 const MicrosoftAuth = require('./microsoft-auth');
 const DiscordPresence = require('./discord-rpc');
+const setupDiscordHandlers = require('./discord-handler');
+const { setSettingsWindow } = require('./discord-handler');
 const si = require('systeminformation');
 const fetch = require('node-fetch');
 const mc = require('minecraft-protocol');
 const fs = require('fs');
 const os = require('os');
 
+// Chemins pour les mods
+const MODS_DIR = path.join(app.getPath('userData'), 'mods');
+const MODS_DB_FILE = path.join(app.getPath('userData'), 'mods.json');
+
+// S'assurer que le dossier mods existe
+function initModsDirectory() {
+  try {
+    if (!fs.existsSync(MODS_DIR)) {
+      fs.mkdirSync(MODS_DIR, { recursive: true });
+      console.log('📁 Mods folder created:', MODS_DIR);
+    }
+  } catch (error) {
+    console.error('Error creating mods folder:', error);
+  }
+}
 
 // ✅ LIMITER LA CONCURRENCE HTTP/HTTPS (Windows compatible)
 const http = require('http');
@@ -33,8 +50,11 @@ const LAUNCH_COOLDOWN = 1000; // 1 seconde minimum entre les tentatives
 let modsLoadedCount = 0; // Tracker le nombre de mods chargés
 let currentLogs = []; // ✅ STOCKER LES LOGS
 
+// ✅ Configurer les handlers Discord
+setupDiscordHandlers(discordRPC, store, settingsWindow);
+
 function createWindow() {
-  const iconPath = path.join(__dirname, '../../assets/minecraft-icon.png');
+  const iconPath = path.join(__dirname, "../../assets/icon.ico");
   
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -85,7 +105,7 @@ function createSettingsWindow() {
     return;
   }
 
-  const iconPath = path.join(__dirname, '../../assets/minecraft-icon.png');
+  const iconPath = path.join(__dirname, "../../assets/icon.ico");
 
   settingsWindow = new BrowserWindow({
     width: 900,
@@ -103,6 +123,9 @@ function createSettingsWindow() {
     ...(fs.existsSync(iconPath) && { icon: iconPath })
   });
 
+  // Mettre à jour la référence dans discord-handler
+  setSettingsWindow(settingsWindow);
+
   settingsWindow.loadFile(path.join(__dirname, '../renderer/settings.html'));
 
   settingsWindow.on('closed', () => {
@@ -117,7 +140,7 @@ function createLogsWindow() {
     return;
   }
 
-  const iconPath = path.join(__dirname, '../../assets/minecraft-icon.png');
+  const iconPath = path.join(__dirname, "../../assets/icon.ico");
 
   logsWindow = new BrowserWindow({
     width: 950,
@@ -470,7 +493,7 @@ ipcMain.on('settings-updated', (event, settings) => {
     mainWindow.webContents.send('settings-updated', settings);
   }
 });
-
+/*
 // ✅ ENVOYER LE CHEMIN DES ASSETS POUR LA MUSIQUE (HORS DE app.asar)
 ipcMain.handle('get-assets-path', async () => {
   // Utiliser process.resourcesPath qui pointe vers le dossier resources/
@@ -488,7 +511,7 @@ ipcMain.handle('get-assets-path', async () => {
   console.log('✅ Music path sent to renderer:', musicPath);
   return musicPath;
 });
-
+*/
 // Obtenir les infos du compte
 // ✅ NEWSLETTER SUBSCRIPTION
 ipcMain.handle('subscribe-newsletter', async (event, { email }) => {
@@ -521,12 +544,111 @@ ipcMain.handle('get-account-info', async () => {
       type: authData.type || 'offline'
     };
   } catch (error) {
-    console.error('Erreur récupération compte:', error);
+    console.error('Error retrieving account:', error);
     return { success: false, error: error.message };
   }
 });
 
+async function initializeDiscord() {
+  try {
+    discordRPC = new DiscordPresence({
+      clientId: '1459481513513975971',
+      autoReconnect: true,
+      reconnectDelay: 5000,
+      maxReconnectAttempts: 10
+    });
 
+    // Charger et appliquer les paramètres sauvegardés
+    discordRPC.updateRPCSettings({
+      showStatus: store.get('discord.showStatus', true),
+      showDetails: store.get('discord.showDetails', true),
+      showImage: store.get('discord.showImage', true)
+    });
+
+    // Écouter les événements Discord
+    discordRPC.on('connected', (user) => {
+      console.log('✅ Discord connected:', user.username);
+      
+      // Envoyer l'événement à la fenêtre settings si elle existe
+      if (settingsWindow && !settingsWindow.isDestroyed()) {
+        settingsWindow.webContents.send('discord-connected', user);
+      }
+      
+      // Définir le statut initial
+      discordRPC.setLauncher(store.get('account.username') || 'Joueur');
+    });
+
+    discordRPC.on('disconnected', () => {
+      console.log('❌ Discord disconnected');
+      
+      if (settingsWindow && !settingsWindow.isDestroyed()) {
+        settingsWindow.webContents.send('discord-disconnected');
+      }
+    });
+
+    discordRPC.on('error', (error) => {
+      console.error('⚠️ Erreur Discord:', error.message);
+      
+      if (settingsWindow && !settingsWindow.isDestroyed()) {
+        settingsWindow.webContents.send('discord-error', error);
+      }
+    });
+
+    discordRPC.on('activityUpdated', (activity) => {
+      if (settingsWindow && !settingsWindow.isDestroyed()) {
+        settingsWindow.webContents.send('discord-activity-updated', activity);
+      }
+    });
+
+    // Se connecter à Discord avec retries (avec petit délai initial)
+    setTimeout(async () => {
+      await discordRPC.initializeWithRetry(3, 1000);
+    }, 500);
+    
+  } catch (error) {
+    console.error('❌ Erreur initialisation Discord:', error);
+  }
+}
+
+// ==================== APP LIFECYCLE ====================
+
+// Initialiser Discord au démarrage de l'app
+app.whenReady().then(async () => {
+  // ... ton code existant ...
+  
+  // Initialiser Discord RPC
+  const discordEnabled = store.get('discord.rpcEnabled', true);
+  if (discordEnabled) {
+    await initializeDiscord();
+  }
+  
+  // ... reste de ton code ...
+});
+
+// Nettoyer Discord à la fermeture
+app.on('before-quit', async () => {
+  if (discordRPC) {
+    await discordRPC.destroy();
+  }
+});
+
+app.on('window-all-closed', () => {
+  if (discordRPC) {
+    discordRPC.destroy();
+  }
+  
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// ==================== EXPORTS (si nécessaire) ====================
+
+// Exporter discordRPC pour l'utiliser ailleurs dans ton app
+module.exports = {
+  getDiscordRPC: () => discordRPC,
+  initializeDiscord
+};
 
 // ✅ ÉCOUTER LE SIGNAL DE DÉCONNEXION
 ipcMain.on('logout-complete', (event) => {
@@ -643,6 +765,7 @@ console.error = function(...args) {
 };
 
 app.whenReady().then(async () => {
+  initModsDirectory();
   createWindow();
   
   const discordEnabled = store.get('settings.discordRPC', false);
@@ -656,7 +779,7 @@ app.whenReady().then(async () => {
       console.log('\n[o] Auto checking for updates on startup...');
       const updateResult = await checkUpdatesAndInstall();
       if (updateResult.hasUpdate) {
-        console.log('✅ Mise à jour automatique en cours...');
+        console.log('✅ Automatic update in progress...');
       } else {
         console.log('[v] You are up to date');
       }
@@ -762,7 +885,7 @@ ipcMain.handle('get-storage-info', async () => {
     }
     
     const settings = store.get('settings', {});
-    const gameDir = settings.gameDirectory || path.join(os.homedir(), '.minecraft');
+    const gameDir = settings.gameDirectory || path.join(os.homedir(), 'AppData', 'Roaming', '.minecraft');
     
     // Vérifier que le dossier existe
     if (!fs.existsSync(gameDir)) {
@@ -852,7 +975,7 @@ ipcMain.handle('get-storage-info', async () => {
       );
     });
   } catch (error) {
-    console.error('Erreur récupération stockage:', error);
+    console.error('Error retrieving storage:', error);
     return {
       success: false,
       error: error.message
@@ -864,7 +987,7 @@ ipcMain.handle('get-storage-info', async () => {
 ipcMain.handle('open-minecraft-folder', async () => {
   try {
     const settings = store.get('settings', {});
-    const gameDir = settings.gameDirectory || path.join(os.homedir(), '.minecraft');
+    const gameDir = settings.gameDirectory || path.join(os.homedir(), 'AppData', 'Roaming', '.minecraft');
     
     if (!fs.existsSync(gameDir)) {
       fs.mkdirSync(gameDir, { recursive: true });
@@ -882,7 +1005,7 @@ ipcMain.handle('open-minecraft-folder', async () => {
 ipcMain.handle('clear-minecraft-cache', async () => {
   try {
     const settings = store.get('settings', {});
-    const gameDir = settings.gameDirectory || path.join(os.homedir(), '.minecraft');
+    const gameDir = settings.gameDirectory || path.join(os.homedir(), 'AppData', 'Roaming', '.minecraft');
     
     const cacheDirs = [
       path.join(gameDir, 'cache'),
@@ -911,7 +1034,7 @@ ipcMain.handle('clear-minecraft-cache', async () => {
     }
 
     const clearedMB = (clearedSize / (1024 * 1024)).toFixed(2);
-    console.log(`✅ Cache supprimé: ${clearedMB} MB`);
+    console.log(`✅ Cache cleared: ${clearedMB} MB`);
     
     return {
       success: true,
@@ -940,7 +1063,7 @@ ipcMain.handle('get-notification-settings', async () => {
       volume: notifSettings.volume || 50
     };
   } catch (error) {
-    console.error('Erreur récupération notifications:', error);
+    console.error('Error retrieving notifications:', error);
     return { success: false, error: error.message };
   }
 });
@@ -949,7 +1072,7 @@ ipcMain.handle('get-notification-settings', async () => {
 ipcMain.handle('save-notification-settings', async (event, settings) => {
   try {
     store.set('notificationSettings', settings);
-    console.log('✅ Paramètres de notifications sauvegardés');
+    console.log('✅ Notification settings saved');
     return { success: true };
   } catch (error) {
     console.error('Erreur sauvegarde notifications:', error);
@@ -965,12 +1088,12 @@ ipcMain.handle('test-notification', async (event, options) => {
     const notif = new Notification({
       title: 'Test de notification',
       body: 'Ceci est un test de notification CraftLauncher',
-      icon: path.join(__dirname, '../assets/icon.png')
+      icon: path.join(__dirname, "../../assets/icon.ico")
     });
 
     notif.show();
     
-    console.log('✅ Notification test envoyée');
+    console.log('✅ Test notification sent');
     return { success: true };
   } catch (error) {
     console.error('Erreur notification test:', error);
@@ -991,96 +1114,10 @@ ipcMain.handle('reset-notification-settings', async () => {
     };
     
     store.set('notificationSettings', defaultSettings);
-    console.log('✅ Paramètres de notifications réinitialisés');
+    console.log('✅ Notification settings reset');
     return { success: true };
   } catch (error) {
-    console.error('Erreur réinitialisation notifications:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// ...existing code...
-
-// ✅ DISCORD - OBTENIR LES PARAMETRES
-ipcMain.handle('get-discord-settings', async () => {
-  try {
-    const discordSettings = store.get('discordSettings', {});
-    return {
-      success: true,
-      rpcEnabled: discordSettings.rpcEnabled !== false,
-      showStatus: discordSettings.showStatus !== false,
-      showDetails: discordSettings.showDetails !== false,
-      showImage: discordSettings.showImage !== false,
-      isConnected: discordRPC.isConnected
-    };
-  } catch (error) {
-    console.error('Erreur récupération Discord:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// ✅ DISCORD - SAUVEGARDER
-ipcMain.handle('save-discord-settings', async (event, settings) => {
-  try {
-    store.set('discordSettings', settings);
-    
-    if (settings.rpcEnabled) {
-      if (!discordRPC.isConnected) {
-        await discordRPC.connect();
-      }
-    } else {
-      await discordRPC.disconnect();
-    }
-    
-    console.log('✅ Paramètres Discord sauvegardés');
-    return { success: true };
-  } catch (error) {
-    console.error('Erreur sauvegarde Discord:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// ✅ DISCORD - RECONNECTER
-ipcMain.handle('reconnect-discord-rpc', async () => {
-  try {
-    await discordRPC.disconnect();
-    const connected = await discordRPC.connect();
-    
-    if (connected) {
-      const authData = store.get('authData');
-      if (authData) {
-        await discordRPC.setInLauncher(authData.username);
-      }
-      console.log('[OK] Discord reconnected');
-      return { success: true };
-    }
-    return { success: false };
-  } catch (error) {
-    console.error('Erreur reconnexion Discord:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// ✅ DISCORD - REINITIALISER
-ipcMain.handle('reset-discord-settings', async () => {
-  try {
-    const defaultSettings = {
-      rpcEnabled: true,
-      showStatus: true,
-      showDetails: true,
-      showImage: true
-    };
-    
-    store.set('discordSettings', defaultSettings);
-    
-    if (defaultSettings.rpcEnabled && !discordRPC.isConnected) {
-      await discordRPC.connect();
-    }
-    
-    console.log('✅ Paramètres Discord réinitialisés');
-    return { success: true };
-  } catch (error) {
-    console.error('Erreur réinitialisation Discord:', error);
+    console.error('Error resetting notifications:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1104,7 +1141,7 @@ ipcMain.handle('log-game-session', async (event, sessionData) => {
   if (sessions.length > 100) sessions.pop();
   
   store.set('gameSessions', sessions);
-  console.log(`✅ Session enregistrée: ${newSession.durationMinutes}min`);
+  console.log(`✅ Session registered: ${newSession.durationMinutes}min`);
   
   return { success: true };
 });
@@ -1229,7 +1266,7 @@ ipcMain.handle('login-offline', async (event, username) => {
       await discordRPC.setInLauncher(username);
     }
     
-    console.log(`✅ Connecté en mode offline: ${username}`);
+    console.log(`✅ Connected in offline mode: ${username}`);
     return { success: true, data: authData };
   } catch (error) {
     console.error('Erreur login-offline:', error);
@@ -1299,7 +1336,7 @@ ipcMain.handle('create-profile', async (event, profileData) => {
   
   profiles.push(newProfile);
   store.set('profiles', profiles);
-  console.log(`✅ Profil créé: ${newProfile.name}`);
+  console.log(`✅ Profile created: ${newProfile.name}`);
   
   return { success: true, profile: newProfile };
 });
@@ -1314,7 +1351,7 @@ ipcMain.handle('delete-profile', async (event, profileId) => {
   
   const filtered = profiles.filter(p => p.id !== profileId);
   store.set('profiles', filtered);
-  console.log(`✅ Profil supprimé: ${profileId}`);
+  console.log(`✅ Profile deleted: ${profileId}`);
   
   return { success: true };
 });
@@ -1338,7 +1375,7 @@ ipcMain.handle('duplicate-profile', async (event, profileId) => {
   
   profiles.push(duplicated);
   store.set('profiles', profiles);
-  console.log(`✅ Profil dupliqué: ${duplicated.name}`);
+  console.log(`✅ Profile duplicated: ${duplicated.name}`);
   
   return { success: true, profile: duplicated };
 });
@@ -1354,7 +1391,7 @@ ipcMain.handle('rename-profile', async (event, profileId, newName) => {
   
   profile.name = newName;
   store.set('profiles', profiles);
-  console.log(`✅ Profil renommé: ${newName}`);
+  console.log(`✅ Profile renamed: ${newName}`);
   
   return { success: true, profile };
 });
@@ -1376,7 +1413,7 @@ ipcMain.handle('update-profile-version', async (event, version) => {
   profile.lastPlayed = new Date().toISOString().split('T')[0];
   
   store.set('profiles', profiles);
-  console.log(`✅ Version mise à jour: ${version}`);
+  console.log(`✅ Version updated: ${version}`);
   
   return { success: true, profile };
 });
@@ -1386,7 +1423,7 @@ ipcMain.handle('get-settings', async () => {
   return store.get('settings', {
     ramAllocation: 4,
     javaPath: 'java',
-    gameDirectory: path.join(os.homedir(), '.minecraft'),
+    gameDirectory: path.join(os.homedir(), 'AppData', 'Roaming', '.minecraft'),
     discordRPC: false
   });
 });
@@ -1446,7 +1483,7 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
     // ✅ VÉRIFICATION: OFFLINE NE PEUT PAS LANCER SANS VERSION EXISTANTE
     if (authData.type === 'offline') {
       // Vérifier que la version existe déjà localement
-      const gameDir = settings.gameDirectory || path.join(os.homedir(), '.minecraft');
+      const gameDir = settings.gameDirectory || path.join(os.homedir(), 'AppData', 'Roaming', '.minecraft');
       const versionPath = path.join(gameDir, 'versions', profile.version);
       
       if (!fs.existsSync(versionPath)) {
@@ -1459,7 +1496,7 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
 
     minecraftRunning = true;
 
-    const gameDir = settings.gameDirectory || path.join(os.homedir(), '.minecraft');
+    const gameDir = settings.gameDirectory || path.join(os.homedir(), 'AppData', 'Roaming', '.minecraft');
     const launcher = new MinecraftLauncher();
     
     console.log(`\n🚀 Lancement Minecraft (${authData.type})...`);
@@ -1490,7 +1527,7 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
       });
 
       if (discordRPC.enabled) {
-        await discordRPC.setPlaying(profile.version, serverIP);
+        await discordRPC.setPlaying(profile.version, { server: serverIP });
       }
       
       return {
@@ -1530,13 +1567,13 @@ ipcMain.handle('select-game-directory', async () => {
       const settings = store.get('settings', {});
       settings.gameDirectory = result.filePaths[0];
       store.set('settings', settings);
-      console.log('📁 Répertoire Minecraft défini:', result.filePaths[0]);
+      console.log('📁 Minecraft directory set:', result.filePaths[0]);
       return { success: true, path: result.filePaths[0] };
     }
 
     return { success: false, canceled: true };
   } catch (error) {
-    console.error('Erreur sélection répertoire:', error);
+    console.error('Error selecting directory:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1632,46 +1669,11 @@ ipcMain.handle('ping-server', async (event, serverAddress) => {
   }
 });
 
-// News Minecraft
-ipcMain.handle('get-minecraft-news', async () => {
-  try {
-    const response = await fetch('https://launchermeta.mojang.com/mc/news.json');
-    const data = await response.json();
-    return data.newsitems || [];
-  } catch (error) {
-    console.log('Erreur récupération news Minecraft:', error);
-    return [];
-  }
-});
-
 // Tête du joueur
 ipcMain.handle('get-player-head', async (event, username) => {
   try {
     const headUrl = `https://mc-heads.net/avatar/${username}/128`;
     return { success: true, url: headUrl };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// Test Discord RPC
-ipcMain.handle('test-discord-rpc', async () => {
-  try {
-    if (discordRPC.isConnected) {
-      await discordRPC.disconnect();
-    }
-    
-    const connected = await discordRPC.connect();
-    
-    if (connected) {
-      await discordRPC.setActivity(
-        'Test Discord RPC',
-        'CraftLauncher fonctionne !',
-        Date.now()
-      );
-      return { success: true };
-    }
-    return { success: false, error: 'Discord non connecté' };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -1691,39 +1693,39 @@ ipcMain.on('open-settings', (event, options = {}) => {
   }
 });
 
-// ✅ HANDLER POUR LA DÉCONNEXION DEPUIS LES PARAMÈTRES
+// ✅ HANDLER FOR DISCONNECTION FROM SETTINGS
 ipcMain.on('logout-from-settings', (event) => {
-  console.log('📡 Signal logout-from-settings reçu dans main');
+  console.log('📡 Logout signal received from settings');
   
-  // Fermer immédiatement les paramètres
+  // Close settings immediately
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.close();
     settingsWindow = null;
   }
   
-  // Vérifier que la fenêtre principale existe et est visible
+  // Verify that the main window exists and is visible
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (!mainWindow.isVisible()) {
       mainWindow.show();
     }
     
-    // Envoyer le signal à la fenêtre principale
+    // Send the signal to the main window
     mainWindow.webContents.send('logout-from-settings');
-    console.log('✅ Signal envoyé à la fenêtre principale');
+    console.log('✅ Signal sent to main window');
   } else {
-    console.error('❌ Fenêtre principale introuvable');
+    console.error('❌ Main window not found');
   }
 });
 
 // ✅ HANDLER LOGOUT - NETTOYER LES DONNÉES
 ipcMain.handle('logout-account', async () => {
   try {
-    // Supprimer les données d'authentification
+    // Delete authentication data
     store.delete('authData');
     store.delete('authToken');
     store.delete('profiles');
     
-    // Déconnecter Discord RPC si actif
+    // Disconnect Discord RPC if active
     if (discordRPC && discordRPC.isConnected) {
       try {
         await discordRPC.disconnect();
@@ -1732,7 +1734,7 @@ ipcMain.handle('logout-account', async () => {
       }
     }
     
-    console.log('✅ Compte déconnecté');
+    console.log('✅ Account disconnected');
     return { success: true };
   } catch (error) {
     console.error('Erreur logout:', error);
@@ -1740,17 +1742,17 @@ ipcMain.handle('logout-account', async () => {
   }
 });
 
-// ✅ REMPLACER L'ANCIEN HANDLER
+// ✅ REPLACE OLD HANDLER
 ipcMain.on('return-to-login', (event) => {
-  console.log('📡 Signal return-to-login reçu');
+  console.log('📡 Return to login signal received');
   
-  // Fermer les paramètres s'ils sont ouverts
+  // Close settings if they are open
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.close();
     settingsWindow = null;
   }
   
-  // Afficher et focus la fenêtre principale
+  // Show and focus the main window
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
     mainWindow.focus();
@@ -1802,32 +1804,9 @@ ipcMain.on('open-folder', (event, folderPath) => {
   shell.openPath(folderPath);
 });
 
-// ✅ TERMS OF SERVICE - GET ACCEPTANCE
-ipcMain.handle('get-tos-acceptance', async () => {
-  try {
-    const tosAccepted = store.get('tosAccepted', false);
-    return tosAccepted;
-  } catch (error) {
-    console.error('Erreur get-tos-acceptance:', error);
-    return false;
-  }
-});
-
-// ✅ TERMS OF SERVICE - ACCEPT
-ipcMain.handle('accept-tos', async () => {
-  try {
-    store.set('tosAccepted', true);
-    console.log('✅ TOS Acceptées');
-    return { success: true };
-  } catch (error) {
-    console.error('Erreur accept-tos:', error);
-    return { success: false, error: error.message };
-  }
-});
-
 // ✅ UPDATES - FONCTION POUR EXTRAIRE LA VERSION DU NOM DE RELEASE
 function extractVersionFromReleaseName(releaseName) {
-  // Cherche un pattern comme "v3.0.0" ou "3.0.0" dans le nom
+  // Cherche un pattern comme "v3.1.56" ou "3.1.56" dans le nom
   const versionRegex = /v?(\d+\.\d+\.\d+)/i;
   const match = releaseName.match(versionRegex);
   return match ? match[1] : null;
@@ -1875,8 +1854,8 @@ async function checkUpdatesAndInstall() {
       return { hasUpdate: false };
     }
     
-    // Nouvelle version trouvée! Télécharger et installer
-    console.log(`\n🎉 Nouvelle version disponible: v${latestVersion}`);
+    // New version found! Download and install
+    console.log(`\n🎉 New version available: v${latestVersion}`);
     
     const exeAsset = latestRelease.assets.find(a => a.name.endsWith('.exe'));
     if (!exeAsset) {
@@ -1887,7 +1866,7 @@ async function checkUpdatesAndInstall() {
     const fileName = exeAsset.name;
     const updatePath = path.join(os.tmpdir(), fileName);
     
-    console.log(`📥 Téléchargement v${latestVersion}...`);
+    console.log(`📥 Downloading v${latestVersion}...`);
     const downloadResponse = await fetch(downloadUrl);
     
     if (!downloadResponse.ok) {
@@ -1897,24 +1876,24 @@ async function checkUpdatesAndInstall() {
     const buffer = await downloadResponse.buffer();
     fs.writeFileSync(updatePath, buffer);
     
-    console.log(`✓ ${fileName} téléchargé (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
-    console.log('🚀 Installation automatique en cours...\n');
+    console.log(`✓ ${fileName} downloaded (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
+    console.log('🚀 Automatic installation in progress...\n');
     
-    // Lancer l'installateur
+    // Launch the installer
     const { spawn } = require('child_process');
     spawn(updatePath, [], {
       detached: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
     
-    // Quitter l'app
+    // Quit the app
     setTimeout(() => {
       app.quit();
     }, 500);
     
     return { hasUpdate: true, installed: true };
   } catch (error) {
-    console.error('❌ Erreur auto-update:', error.message);
+    console.error('❌ Auto-update error:', error.message);
     return { hasUpdate: false, error: error.message };
   }
 }
@@ -1936,7 +1915,7 @@ ipcMain.handle('check-updates', async () => {
     });
     
     if (!response.ok) {
-      console.log('⚠️ Impossible de vérifier les mises à jour (API GitHub)');
+      console.log('⚠️ Unable to check for updates (GitHub API)');
       return { 
         hasUpdate: false, 
         currentVersion: currentVersion,
@@ -1963,7 +1942,7 @@ ipcMain.handle('check-updates', async () => {
     }
     
     if (!latestRelease || !latestVersion) {
-      console.log('⚠️ Aucune release stable trouvée');
+      console.log('⚠️ No stable release found');
       return { 
         hasUpdate: false, 
         currentVersion: currentVersion,
@@ -1978,7 +1957,7 @@ ipcMain.handle('check-updates', async () => {
     const exeAsset = latestRelease.assets.find(a => a.name.endsWith('.exe'));
     
     if (!exeAsset) {
-      console.log('⚠️ Aucun fichier .exe trouvé');
+      console.log('⚠️ No .exe file found');
       return { 
         hasUpdate: false, 
         currentVersion: currentVersion,
@@ -1999,14 +1978,14 @@ ipcMain.handle('check-updates', async () => {
     };
     
     if (hasUpdate) {
-      console.log(`✅ Nouvelle version disponible: v${latestVersion}`);
+      console.log(`✅ New version available: v${latestVersion}`);
     } else {
       console.log('[v] You are using the latest version');
     }
     
     return latestUpdateData;
   } catch (error) {
-    console.error('❌ Erreur check-updates:', error);
+    console.error('❌ Check-updates error:', error);
     return { 
       hasUpdate: false, 
       currentVersion: 'unknown',
@@ -2020,41 +1999,41 @@ ipcMain.handle('check-updates', async () => {
 ipcMain.handle('install-update', async () => {
   try {
     if (!latestUpdateData || !latestUpdateData.downloadUrl) {
-      console.log('⚠️ Pas de mise à jour disponible');
-      return { success: false, error: 'Aucune mise à jour trouvée. Vérifiez d\'abord.' };
+      console.log('⚠️ No update available');
+      return { success: false, error: 'No update found. Check first.' };
     }
     
-    console.log(`📥 Téléchargement v${latestUpdateData.latestVersion}...`);
+    console.log(`📥 Downloading v${latestUpdateData.latestVersion}...`);
     const updatePath = path.join(os.tmpdir(), latestUpdateData.fileName);
     
-    // Télécharger la mise à jour
+    // Download the update
     const response = await fetch(latestUpdateData.downloadUrl);
     if (!response.ok) {
-      throw new Error(`Erreur HTTP: ${response.status}`);
+      throw new Error(`HTTP error: ${response.status}`);
     }
     
     const buffer = await response.buffer();
     fs.writeFileSync(updatePath, buffer);
     
-    console.log(`✓ ${latestUpdateData.fileName} téléchargé (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
-    console.log('🚀 Lancement de l\'installateur...');
+    console.log(`✓ ${latestUpdateData.fileName} downloaded (${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
+    console.log('🚀 Launching the installer...');
     
-    // Exécuter l'installateur en mode détaché
+    // Run the installer in detached mode
     const { spawn } = require('child_process');
     spawn(updatePath, [], {
       detached: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
     
-    // Fermer l'app après un délai
+    // Close the app after a delay
     setTimeout(() => {
-      console.log('🔄 Fermeture de l\'application...');
+      console.log('🔄 Closing application...');
       app.quit();
     }, 500);
     
-    return { success: true, message: `Installation de v${latestUpdateData.latestVersion} en cours...` };
+    return { success: true, message: `Installation of v${latestUpdateData.latestVersion} in progress...` };
   } catch (error) {
-    console.error('❌ Erreur install-update:', error);
+    console.error('❌ Install-update error:', error);
     latestUpdateData = null;
     return { success: false, error: error.message };
   }
@@ -2075,662 +2054,287 @@ function compareVersions(v1, v2) {
 }
 
 ipcMain.on('minimize-window', () => mainWindow.minimize());
-ipcMain.handle('get-mods', async () => {
+
+// Charger la base de données des mods
+function loadModsDB() {
   try {
-    const modsPath = path.join(os.homedir(), '.minecraft', 'mods');
-    
-    // Créer le dossier s'il n'existe pas
-    if (!fs.existsSync(modsPath)) {
-      fs.mkdirSync(modsPath, { recursive: true });
-      return [];
+    if (fs.existsSync(MODS_DB_FILE)) {
+      return JSON.parse(fs.readFileSync(MODS_DB_FILE, 'utf8'));
     }
-    
-    const files = fs.readdirSync(modsPath);
-    const mods = files
-      .filter(file => file.endsWith('.jar'))
-      .map(file => {
-        const filePath = path.join(modsPath, file);
-        const stat = fs.statSync(filePath);
-        
-        // Extraire le nom du mod (sans l'extension .jar)
-        const name = file.replace('.jar', '');
-        const parts = name.split('-');
-        
-        return {
-          id: file,
-          name: name,
-          version: parts[parts.length - 1] || 'Unknown',
-          size: stat.size,
-          enabled: true,
-          filePath: filePath
-        };
-      });
-    
-    return mods;
   } catch (error) {
-    console.error('Erreur get-mods:', error);
-    return [];
+    console.error('Erreur lecture mods DB:', error);
   }
-});
-
-// ✅ MODS MANAGER - DELETE MOD
-ipcMain.handle('delete-mod', async (event, modId) => {
-  try {
-    const modsPath = path.join(os.homedir(), '.minecraft', 'mods');
-    const modPath = path.join(modsPath, modId);
-    
-    if (fs.existsSync(modPath)) {
-      fs.unlinkSync(modPath);
-      return { success: true };
-    }
-    return { success: false, error: 'Fichier non trouvé' };
-  } catch (error) {
-    console.error('Erreur delete-mod:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// ✅ MODS MANAGER - OPEN MODS FOLDER
-ipcMain.handle('open-mods-folder', async () => {
-  try {
-    const modsPath = path.join(os.homedir(), '.minecraft', 'mods');
-    
-    // Créer le dossier s'il n'existe pas
-    if (!fs.existsSync(modsPath)) {
-      fs.mkdirSync(modsPath, { recursive: true });
-    }
-    
-    shell.openPath(modsPath);
-    return { success: true };
-  } catch (error) {
-    console.error('Erreur open-mods-folder:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// ✅ MODS MANAGER - IMPORT MOD
-ipcMain.handle('import-mod', async () => {
-  try {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Sélectionner un mod à importer',
-      defaultPath: os.homedir(),
-      filters: [
-        { name: 'Fichiers JAR', extensions: ['jar'] },
-        { name: 'Tous les fichiers', extensions: ['*'] }
-      ],
-      properties: ['openFile', 'multiSelections']
-    });
-    
-    if (!result.canceled) {
-      const modsPath = path.join(os.homedir(), '.minecraft', 'mods');
-      
-      // Créer le dossier s'il n'existe pas
-      if (!fs.existsSync(modsPath)) {
-        fs.mkdirSync(modsPath, { recursive: true });
-      }
-      
-      // Copier les fichiers
-      result.filePaths.forEach(filePath => {
-        const fileName = path.basename(filePath);
-        const destPath = path.join(modsPath, fileName);
-        fs.copyFileSync(filePath, destPath);
-      });
-      
-      return { success: true, count: result.filePaths.length };
-    }
-    return { success: false };
-  } catch (error) {
-    console.error('Erreur import-mod:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// ✅ MODS MANAGER - MODRINTH API INTEGRATION
-ipcMain.handle('get-curseforge-mods', async () => {
-  try {
-    const cached = store.get('modrinth-mods-cache', null);
-    const cacheTime = store.get('modrinth-mods-time', 0);
-    
-    // Si le cache est valide (moins de 2 heures), le retourner immédiatement
-    if (cached && Array.isArray(cached) && cached.length > 0 && Date.now() - cacheTime < 120 * 60 * 1000) {
-      console.log(`✓ ${cached.length} mods chargés depuis le cache`);
-      // Ajouter les mods "À venir" s'ils ne sont pas déjà dans le cache
-      const comingSoonMods = getComingSoonMods();
-      const allMods = [...cached, ...comingSoonMods.filter(cm => !cached.some(m => m.id === cm.id))];
-      return allMods;
-    }
-
-    console.log('📥 Récupération des mods depuis Modrinth API...');
-
-    // Mods populaires à récupérer depuis Modrinth
-    const modQueries = [
-      'sodium', 'fabric-api', 'lithium', 'iris', 'create', 'modmenu', 'jei', 'noisium',
-      'ae2', 'origins', 'botania', 'immersive-engineering', 'tinkers-construct', 'thaumcraft',
-      'just-enough-resources', 'waila', 'ars-nouveau', 'blood-magic', 'craftable-horse-armour',
-      'dynamictrees', 'emendatus-enigmatica', 'engineersdecor', 'ftb-chunks', 'glamour',
-      'immersiveportals', 'jade', 'journeymap', 'lazy-dfu', 'modular-routers', 'mtr-fabric',
-      'realspeaker', 'sodium-extra', 'stoneholm', 'supplementaries', 'tetra', 'tower',
-      'universal-graves', 'villager-names', 'visual-workbench', 'waystones', 'yungs-api'
-    ];
-
-    const mods = [];
-    let successCount = 0;
-    
-    for (const query of modQueries) {
-      try {
-        await delay(300);
-        const mod = await fetchModWithRetry(query, 1);
-        if (mod) {
-          mods.push(mod);
-          successCount++;
-        }
-      } catch (error) {
-        console.error(`⚠️ ${query}: ${error.message}`);
-      }
-    }
-
-    if (mods.length === 0) {
-      console.log('⚠️ Aucun mod trouvé, utilisation du cache par défaut');
-      return getDefaultMods();
-    }
-
-    // Ajouter les mods "À venir" à la fin
-    const comingSoonMods = getComingSoonMods();
-    const allMods = [...mods, ...comingSoonMods];
-
-    store.set('modrinth-mods-cache', allMods);
-    store.set('modrinth-mods-time', Date.now());
-    
-    console.log(`✓ ${allMods.length} mods chargés depuis Modrinth (dont ${comingSoonMods.length} à venir)`);
-    return allMods;
-  } catch (error) {
-    console.error('Erreur get-curseforge-mods:', error);
-    return getDefaultMods();
-  }
-});
-
-// ✅ CHARGER PLUS DE MODS
-ipcMain.handle('get-more-mods', async () => {
-  try {
-    // Mods supplémentaires à charger avec "Charger plus"
-    const additionalModQueries = [
-      'ae2', 'origins', 'botania', 'immersive-engineering', 'tinkers-construct', 'thaumcraft',
-      'just-enough-resources', 'waila', 'ars-nouveau', 'blood-magic', 'craftable-horse-armour',
-      'dynamictrees', 'emendatus-enigmatica', 'engineersdecor', 'ftb-chunks', 'glamour',
-      'immersiveportals', 'jade', 'journeymap', 'lazy-dfu', 'modular-routers', 'mtr-fabric',
-      'realspeaker', 'sodium-extra', 'stoneholm', 'supplementaries', 'tetra', 'tower',
-      'universal-graves', 'villager-names', 'visual-workbench', 'waystones', 'yungs-api'
-    ];
-
-    const mods = [];
-    
-    // Charger 10 mods à la fois pour ne pas surcharger l'API
-    const modsToLoad = additionalModQueries.slice(modsLoadedCount, modsLoadedCount + 10);
-    
-    for (const query of modsToLoad) {
-      try {
-        await delay(300);
-        const mod = await fetchModWithRetry(query, 1);
-        if (mod) {
-          mods.push(mod);
-        }
-      } catch (error) {
-        console.error(`⚠️ ${query}: ${error.message}`);
-      }
-    }
-
-    // Incrémenter le compteur pour la prochaine fois
-    modsLoadedCount += 10;
-
-    // Sauvegarder tous les mods chargés en cache pour l'installation
-    const allCachedMods = store.get('modrinth-mods-cache', []);
-    const combinedMods = [...allCachedMods, ...mods];
-    store.set('modrinth-mods-cache', combinedMods);
-
-    console.log(`✓ ${mods.length} mods supplémentaires chargés`);
-    return mods;
-  } catch (error) {
-    console.error('Erreur get-more-mods:', error);
-    return [];
-  }
-});
-
-// Fonction pour charger les mods depuis Modrinth avec retry et délai
-async function fetchModWithRetry(query, retries = 2) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(query)}&limit=1`, {
-        headers: { 'User-Agent': 'CraftLauncher/3.0.0' },
-        timeout: 5000
-      });
-      
-      if (!response.ok) {
-        const status = response.status;
-        if ((status === 503 || status === 429) && i < retries - 1) {
-          const delay_ms = 1000 * (i + 1);
-          console.warn(`⚠️ API ${status} pour ${query}, retry dans ${delay_ms}ms`);
-          await delay(delay_ms);
-          continue;
-        }
-        throw new Error(`HTTP ${status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.hits && data.hits.length > 0) {
-        const mod = data.hits[0];
-        return {
-          id: mod.project_id,
-          name: mod.title,
-          author: mod.author,
-          description: mod.description || 'Aucune description',
-          icon: mod.icon_url || null,
-          gameVersions: mod.latest_version || '1.20.4',
-          downloads: mod.downloads || 0,
-          modrinthId: mod.project_id,
-          modrinthUrl: mod.project_url,
-          category: mod.categories?.[0] || 'gameplay'
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      if (i < retries - 1) {
-        const delay_ms = 1000 * (i + 1);
-        await delay(delay_ms);
-      } else {
-        console.error(`❌ Impossible de charger ${query}: ${error.message}`);
-        throw error;
-      }
-    }
-  }
-}
-
-function getDefaultMods() {
-  return [
-    { id: 'sodium', name: 'Sodium', author: 'CaffeineMC', description: 'Optimisation graphiques pour Fabric', icon: '📦', gameVersions: '1.16.5 - 1.21+', downloads: 50000000, modrinthId: 'sodium', category: 'optimization' },
-    { id: 'fabric-api', name: 'Fabric API', author: 'FabricMC', description: 'API pour mods Fabric', icon: '📦', gameVersions: '1.14+', downloads: 30000000, modrinthId: 'fabric-api', category: 'library' },
-    { id: 'lithium', name: 'Lithium', author: 'CaffeineMC', description: 'Optimisation performances', icon: '📦', gameVersions: '1.15 - 1.21+', downloads: 20000000, modrinthId: 'lithium', category: 'optimization' },
-    { id: 'iris', name: 'Iris Shaders', author: 'IrisShaders', description: 'Support shaders Fabric', icon: '🌈', gameVersions: '1.16.5 - 1.21+', downloads: 15000000, modrinthId: 'iris', category: 'render' },
-    { id: 'create', name: 'Create', author: 'simibubi', description: 'Machines et mécanismes', icon: '⚙️', gameVersions: '1.16.5 - 1.21', downloads: 10000000, modrinthId: 'create', category: 'technology' },
-    { id: 'modmenu', name: 'Mod Menu', author: 'TerraformersMC', description: 'Gestionnaire de mods', icon: '📋', gameVersions: '1.16 - 1.21+', downloads: 25000000, modrinthId: 'modmenu', category: 'utility' },
-    { id: 'jei', name: 'Just Enough Items', author: 'mezz', description: 'Recettes et inventaire', icon: '🔍', gameVersions: '1.12 - 1.21+', downloads: 35000000, modrinthId: 'jei', category: 'utility' },
-    { id: 'noisium', name: 'Noisium', author: 'Steveplays28', description: 'Génération terrain optimisée', icon: '🌍', gameVersions: '1.18.2 - 1.21+', downloads: 8000000, modrinthId: 'noisium', category: 'optimization' },
-  ];
-}
-
-function getComingSoonMods() {
   return [];
 }
 
-// URLs de fallback pour les mods populaires (en cas d'API indisponible)
-function getModFallbackUrl(modId) {
-  const fallbackUrls = {
-    'sodium': 'https://cdn.modrinth.com/data/AANobbMI/versions/f89a12c1/download',
-    'AANobbMI': 'https://cdn.modrinth.com/data/AANobbMI/versions/f89a12c1/download',
-    'fabric-api': 'https://cdn.modrinth.com/data/P7dR8mSH/versions/latest/download',
-    'P7dR8mSH': 'https://cdn.modrinth.com/data/P7dR8mSH/versions/latest/download',
-    'lithium': 'https://cdn.modrinth.com/data/gvQK8ZW2/versions/latest/download',
-    'gvQK8ZW2': 'https://cdn.modrinth.com/data/gvQK8ZW2/versions/latest/download',
-    'iris': 'https://cdn.modrinth.com/data/YL57xq9U/versions/latest/download',
-    'YL57xq9U': 'https://cdn.modrinth.com/data/YL57xq9U/versions/latest/download',
-  };
-  return fallbackUrls[modId] || null;
+// Sauvegarder la base de données des mods
+function saveModsDB(mods) {
+  try {
+    fs.writeFileSync(MODS_DB_FILE, JSON.stringify(mods, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Erreur sauvegarde mods DB:', error);
+    return false;
+  }
 }
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+// Formater la taille du fichier
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
+// 📥 Récupérer tous les mods installés
 ipcMain.handle('get-installed-mods', async () => {
   try {
-    const modsPath = path.join(os.homedir(), '.minecraft', 'mods');
-    
-    if (!fs.existsSync(modsPath)) {
-      fs.mkdirSync(modsPath, { recursive: true });
-      return [];
-    }
-
-    const files = fs.readdirSync(modsPath);
-    const installedMods = files.filter(f => f.endsWith('.jar')).map(file => {
-      const filePath = path.join(modsPath, file);
-      const stats = fs.statSync(filePath);
-      
-      return {
-        id: file.replace('.jar', ''),
-        name: file.replace('.jar', '').replace(/-\d+\.\d+\.\d+/, ''),
-        version: '3.0.0',
-        size: Math.round(stats.size / (1024 * 1024)), // En MB
-        path: filePath
-      };
-    });
-
-    return installedMods;
+    return loadModsDB();
   } catch (error) {
     console.error('Erreur get-installed-mods:', error);
     return [];
   }
 });
 
-ipcMain.handle('get-mod-details', async (event, { modId }) => {
+// Variable globale pour éviter les imports multiples
+let importInProgress = false;
+
+// ➕ Import mods (KEEP NAME import-mod)
+ipcMain.handle('import-mod', async () => {
+  // Avoid multiple calls
+  if (importInProgress) {
+    console.log('⚠️ Import already in progress, ignored');
+    return { success: false, message: 'Import already in progress' };
+  }
+
   try {
-    // Essayer de récupérer depuis Modrinth avec retry
-    for (let i = 0; i < 2; i++) {
+    importInProgress = true;
+    const { dialog } = require('electron');
+    
+    // Create mods folder
+    if (!fs.existsSync(MODS_DIR)) {
+      fs.mkdirSync(MODS_DIR, { recursive: true });
+    }
+    
+    const result = await dialog.showOpenDialog({
+      title: 'Select a mod (.jar)',
+      filters: [
+        { name: 'JAR Files', extensions: ['jar'] }
+      ],
+      properties: ['openFile', 'multiSelections']
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, message: 'Import cancelled' };
+    }
+
+    const mods = loadModsDB();
+    let importedCount = 0;
+    const errors = [];
+
+    for (const sourcePath of result.filePaths) {
+      const fileName = path.basename(sourcePath);
+      console.log(`\n📦 Import: ${fileName}`);
+
       try {
-        const response = await fetch(`https://api.modrinth.com/v2/search?query=${modId}&limit=1`, {
-          headers: { 'User-Agent': 'CraftLauncher/3.0.0' }
-        });
-        
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
+        const targetPath = path.join(MODS_DIR, fileName);
 
-        if (data.hits && data.hits.length > 0) {
-          const mod = data.hits[0];
-          
-          // Récupérer les versions
-          const versionsResponse = await fetch(`https://api.modrinth.com/v2/project/${mod.project_id}/versions?limit=1`, {
-            headers: { 'User-Agent': 'CraftLauncher/3.0.0' }
-          });
-          
-          const versions = await versionsResponse.json();
-          const latestVersion = versions[0];
-
-          return {
-            id: mod.project_id,
-            name: mod.title,
-            description: mod.description,
-            author: mod.author,
-            version: latestVersion?.name || '3.0.0',
-            gameVersions: latestVersion?.game_versions?.join(', ') || '1.20.4',
-            size: latestVersion?.files?.[0]?.size ? `${Math.round(latestVersion.files[0].size / (1024 * 1024))} MB` : '10-50 MB',
-            dependencies: [],
-            url: mod.project_url,
-            downloads: mod.downloads,
-            modrinthId: mod.project_id
-          };
+        // Check if already exists
+        if (mods.find(m => m.fileName === fileName)) {
+          console.log(`   ⚠ Already exists`);
+          continue;
         }
-        
-        break; // Succès, ne pas retry
+
+        // Copy the file
+        console.log(`   → Copying...`);
+        fs.copyFileSync(sourcePath, targetPath);
+        console.log(`   ✅ Copy successful`);
+
+        // Vérifier que la copie a réussi
+        if (!fs.existsSync(targetPath)) {
+          errors.push(`${fileName}: Copie échouée`);
+          continue;
+        }
+
+        // Get the stats of the copied file
+        const fileStats = fs.statSync(targetPath);
+
+        // Add to database
+        const newMod = {
+          id: Date.now() + importedCount,
+          name: fileName.replace('.jar', '').replace(/\s*\(\d+\)$/, ''),
+          fileName: fileName,
+          version: 'N/A',
+          size: formatFileSize(fileStats.size),
+          enabled: true,
+          importedAt: new Date().toISOString(),
+          path: targetPath
+        };
+
+        mods.push(newMod);
+        importedCount++;
+        console.log(`   ✅ Mod added to database`);
+
       } catch (error) {
-        if (i < 1) {
-          await delay(1000);
-        } else {
-          throw error;
-        }
+        console.error(`   ✗ Error:`, error);
+        errors.push(`${fileName}: ${error.message}`);
       }
     }
 
-    // Fallback
-    return { 
-      name: 'Mod Inconnu',
-      description: 'Informations non disponibles',
-      author: 'Unknown',
-      gameVersions: '1.20.4',
-      dependencies: [],
-      url: 'https://modrinth.com'
+    if (importedCount > 0) {
+      saveModsDB(mods);
+    }
+
+    let message = importedCount > 0 
+      ? `${importedCount} mod(s) imported` 
+      : 'No mods imported';
+    
+    if (errors.length > 0) {
+      message += `\n\nErrors:\n${errors.join('\n')}`;
+    }
+
+    return {
+      success: importedCount > 0,
+      message: message,
+      count: importedCount
     };
+
+  } catch (error) {
+    console.error('❌ Import-mod error:', error);
+    return { success: false, message: error.message };
+  } finally {
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      importInProgress = false;
+      console.log('✅ Import completed, flag reset');
+    }, 1000);
+  }
+});
+
+// 🗑️ Delete a mod
+ipcMain.handle('delete-mod', async (event, modId) => {
+  try {
+    console.log('🗑️ Deleting mod backend, ID:', modId);
+    
+    const mods = loadModsDB();
+    const modIndex = mods.findIndex(m => m.id === modId);
+
+    if (modIndex === -1) {
+      console.error('❌ Mod not found, ID:', modId);
+      return { success: false, message: 'Mod not found' };
+    }
+
+    const mod = mods[modIndex];
+    console.log('📦 Mod found:', mod.name);
+
+    // Delete the physical file
+    if (fs.existsSync(mod.path)) {
+      fs.unlinkSync(mod.path);
+      console.log('✅ File deleted:', mod.path);
+    } else {
+      console.warn('⚠️ File already absent:', mod.path);
+    }
+
+    // Remove from database
+    mods.splice(modIndex, 1);
+    saveModsDB(mods);
+    console.log('✅ Mod removed from database');
+
+    return { success: true, message: 'Mod deleted successfully' };
+
+  } catch (error) {
+    console.error('❌ Delete-mod error:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// 🔄 Enable/Disable a mod
+ipcMain.handle('toggle-mod', async (event, { modId, enabled }) => {
+  try {
+    const mods = loadModsDB();
+    const mod = mods.find(m => m.id === modId);
+
+    if (!mod) {
+      return { success: false, message: 'Mod not found' };
+    }
+
+    mod.enabled = enabled;
+    
+    // Renommer le fichier pour le désactiver/activer
+    const currentPath = mod.path;
+    const newPath = enabled 
+      ? currentPath.replace('.disabled', '')
+      : currentPath + '.disabled';
+
+    if (fs.existsSync(currentPath)) {
+      fs.renameSync(currentPath, newPath);
+      mod.path = newPath;
+    }
+
+    saveModsDB(mods);
+
+    return { 
+      success: true, 
+      message: enabled ? 'Mod activé' : 'Mod désactivé' 
+    };
+
+  } catch (error) {
+    console.error('Erreur toggle-mod:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// 🔍 Obtenir les détails d'un mod
+ipcMain.handle('get-mod-details', async (event, modId) => {
+  try {
+    const mods = loadModsDB();
+    const mod = mods.find(m => m.id === modId);
+
+    if (!mod) {
+      return { success: false, message: 'Mod introuvable' };
+    }
+
+    return { success: true, mod };
+
   } catch (error) {
     console.error('Erreur get-mod-details:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// 🧹 Nettoyer les mods orphelins (fichiers sans entrée DB)
+ipcMain.handle('cleanup-mods', async () => {
+  try {
+    const mods = loadModsDB();
+    const files = fs.readdirSync(MODS_DIR).filter(f => f.endsWith('.jar'));
+    
+    let cleanedCount = 0;
+
+    for (const file of files) {
+      const filePath = path.join(MODS_DIR, file);
+      const existsInDB = mods.some(m => m.fileName === file);
+
+      if (!existsInDB) {
+        fs.unlinkSync(filePath);
+        cleanedCount++;
+      }
+    }
+
     return { 
-      name: 'Erreur', 
-      description: 'Impossible de charger les détails', 
-      author: 'System', 
-      gameVersions: '', 
-      dependencies: [], 
-      url: '' 
+      success: true, 
+      message: `${cleanedCount} fichier(s) orphelin(s) supprimé(s)` 
     };
-  }
-});
 
-ipcMain.handle('install-mod', async (event, { modId }) => {
-  try {
-    console.log(`📥 Installation du mod: ${modId}`);
-    
-    const modsPath = path.join(os.homedir(), '.minecraft', 'mods');
-    
-    if (!fs.existsSync(modsPath)) {
-      fs.mkdirSync(modsPath, { recursive: true });
-    }
-
-    let mod = null;
-    let versions = null;
-    let downloadFile = null;
-    let apiSucceeded = false;
-
-    // Étape 1: Chercher le mod sur Modrinth avec retry aggressif
-    console.log(`🔍 Recherche du mod: ${modId}`);
-    for (let i = 0; i < 4; i++) {
-      try {
-        const searchResponse = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(modId)}&limit=1`, {
-          headers: { 'User-Agent': 'CraftLauncher/3.0.0' },
-          timeout: 5000
-        });
-        
-        if (!searchResponse.ok) {
-          const status = searchResponse.status;
-          if (status === 503 || status === 429) {
-            // Service Unavailable ou Rate Limit
-            if (i < 3) {
-              const delay_ms = 2000 * (i + 1);
-              console.warn(`⚠️ API ${status} - Retry dans ${delay_ms}ms...`);
-              await delay(delay_ms);
-              continue;
-            }
-          }
-          throw new Error(`HTTP ${status}`);
-        }
-        
-        const searchData = await searchResponse.json();
-        if (searchData.hits && searchData.hits.length > 0) {
-          mod = searchData.hits[0];
-          console.log(`✅ ${mod.title} trouvé sur Modrinth`);
-          apiSucceeded = true;
-          break;
-        }
-      } catch (error) {
-        if (i < 3) {
-          const delay_ms = 2000 * (i + 1);
-          console.warn(`⏳ Tentative ${i + 1}/4 échouée - Retry dans ${delay_ms}ms:`, error.message);
-          await delay(delay_ms);
-        } else {
-          console.warn(`⚠️ API indisponible, tentative fallback...`);
-        }
-      }
-    }
-
-    // Fallback: Si API fail, utiliser les données de cache
-    if (!mod) {
-      // Chercher dans le cache d'abord
-      const cachedMods = store.get('modrinth-mods-cache', []);
-      mod = cachedMods.find(m => m.modrinthId === modId || m.id === modId);
-      
-      // Si pas dans le cache, chercher dans les mods par défaut
-      if (!mod) {
-        const defaultMods = getDefaultMods();
-        mod = defaultMods.find(m => m.modrinthId === modId || m.id === modId);
-      }
-      
-      if (!mod) {
-        return { success: false, error: 'Mod introuvable - Vérifier la connexion' };
-      }
-      console.log(`💾 Utilisation données cache pour: ${mod.name}`);
-    }
-
-    // Étape 2: Récupérer les versions
-    if (apiSucceeded) {
-      console.log(`📥 Récupération des versions...`);
-      for (let i = 0; i < 4; i++) {
-        try {
-          const versionsResponse = await fetch(`https://api.modrinth.com/v2/project/${mod.project_id}/versions?limit=10`, {
-            headers: { 'User-Agent': 'CraftLauncher/3.0.0' },
-            timeout: 5000
-          });
-          
-          if (!versionsResponse.ok) {
-            const status = versionsResponse.status;
-            if (status === 503 || status === 429) {
-              if (i < 3) {
-                const delay_ms = 2000 * (i + 1);
-                console.warn(`⚠️ API ${status} - Retry dans ${delay_ms}ms...`);
-                await delay(delay_ms);
-                continue;
-              }
-            }
-            throw new Error(`HTTP ${status}`);
-          }
-          versions = await versionsResponse.json();
-          apiSucceeded = versions && versions.length > 0;
-          break;
-        } catch (error) {
-          if (i < 3) {
-            const delay_ms = 2000 * (i + 1);
-            console.warn(`⏳ Versions retry ${i + 1}/4:`, error.message);
-            await delay(delay_ms);
-          }
-        }
-      }
-    }
-
-    // Étape 3: Trouver le fichier à télécharger
-    if (versions && versions.length > 0) {
-      // Chercher une version avec des fichiers valides
-      for (const version of versions) {
-        if (!version.files || version.files.length === 0) continue;
-        
-        // Chercher un fichier .jar valide
-        const jarFile = version.files.find(f => f.filename && f.filename.endsWith('.jar') && f.url);
-        if (jarFile) {
-          downloadFile = jarFile;
-          break;
-        }
-      }
-    }
-
-    if (!downloadFile || !downloadFile.url) {
-      console.warn(`⚠️ Pas de fichier trouvé sur API...`);
-      
-      // Si API n'a pas réussi, on ne peut pas continuer
-      if (!apiSucceeded) {
-        return { success: false, error: 'Mod indisponible actuellement - L\'API Modrinth ne répond pas. Réessayez dans quelques instants.' };
-      }
-    }
-
-    // Étape 4: Télécharger le fichier
-    if (downloadFile && downloadFile.url) {
-      console.log(`🔗 Téléchargement: ${downloadFile.filename}`);
-      
-      let buffer = null;
-      for (let i = 0; i < 4; i++) {
-        try {
-          const response = await fetch(downloadFile.url, {
-            headers: { 'User-Agent': 'CraftLauncher/3.0.0' },
-            timeout: 30000
-          });
-          
-          if (!response.ok) {
-            const status = response.status;
-            if (status === 503 || status === 429) {
-              if (i < 3) {
-                const delay_ms = 3000 * (i + 1);
-                console.warn(`⚠️ Téléchargement ${status} - Retry dans ${delay_ms}ms...`);
-                await delay(delay_ms);
-                continue;
-              }
-            }
-            throw new Error(`HTTP ${status}`);
-          }
-          
-          buffer = await response.buffer();
-          break;
-        } catch (error) {
-          console.warn(`⏳ Téléchargement retry ${i + 1}/4:`, error.message);
-          if (i < 3) {
-            const delay_ms = 3000 * (i + 1);
-            await delay(delay_ms);
-          } else {
-            throw error;
-          }
-        }
-      }
-
-      if (!buffer) {
-        return { success: false, error: 'Impossible de télécharger le fichier' };
-      }
-
-      // Écrire le fichier
-      const modPath = path.join(modsPath, downloadFile.filename);
-      if (fs.existsSync(modPath)) {
-        return { success: true, message: `${mod.title} est déjà installé` };
-      }
-
-      fs.writeFileSync(modPath, buffer);
-      const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
-      
-      console.log(`✅ ${mod.title} installé (${sizeMB} MB)`);
-      return { success: true, message: `${mod.title} installé (${sizeMB} MB)` };
-    } else {
-      return { success: false, error: 'Fichier indisponible - Réessayer plus tard' };
-    }
   } catch (error) {
-    console.error('❌ Erreur install-mod:', error.message);
-    return { success: false, error: `Erreur: ${error.message}` };
+    console.error('Erreur cleanup-mods:', error);
+    return { success: false, message: error.message };
   }
 });
 
-ipcMain.handle('uninstall-mod', async (event, { modId }) => {
-  try {
-    console.log(`🗑️ Désinstallation du mod: ${modId}`);
-    
-    const modsPath = path.join(os.homedir(), '.minecraft', 'mods');
-    
-    // Chercher le fichier du mod
-    if (fs.existsSync(modsPath)) {
-      const files = fs.readdirSync(modsPath);
-      
-      for (const file of files) {
-        if (file.toLowerCase().includes(modId.toLowerCase()) && file.endsWith('.jar')) {
-          const modPath = path.join(modsPath, file);
-          fs.unlinkSync(modPath);
-          console.log(`✓ Mod ${file} désinstallé`);
-          return { success: true, message: `Mod désinstallé` };
-        }
-      }
-    }
-
-    return { success: false, error: 'Mod non trouvé' };
-  } catch (error) {
-    console.error('Erreur uninstall-mod:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('open-mod-config', async (event, { modId }) => {
-  try {
-    const configPath = path.join(os.homedir(), '.minecraft', 'config', modId);
-    
-    if (!fs.existsSync(configPath)) {
-      fs.mkdirSync(configPath, { recursive: true });
-    }
-
-    shell.openPath(configPath);
-    return configPath;
-  } catch (error) {
-    console.error('Erreur open-mod-config:', error);
-    return null;
-  }
-});
-
-ipcMain.handle('refresh-curseforge-cache', async () => {
-  try {
-    store.delete('modrinth-mods-cache');
-    store.delete('modrinth-mods-time');
-    console.log('✓ Cache Modrinth actualisé');
-    return { success: true, message: 'Cache actualisé' };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 ipcMain.on('minimize-window', () => mainWindow.minimize());
 ipcMain.on('maximize-window', () => {

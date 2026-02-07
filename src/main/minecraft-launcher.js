@@ -21,7 +21,7 @@ class MinecraftLauncher {
   async downloadVersion(version, gameDirectory, progressCallback) {
     return new Promise((resolve, reject) => {
       try {
-        console.log(`\n⏳ Préparation du téléchargement pour ${version}...`);
+        console.log(`\n⏳ Preparing download for ${version}...`);
 
         // S'assurer que les dossiers existent
         const dirs = [
@@ -33,7 +33,7 @@ class MinecraftLauncher {
         dirs.forEach(dir => {
           if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
-            console.log(`📁 Dossier créé: ${dir}`);
+            console.log(`📁 Folder created: ${dir}`);
           }
         });
 
@@ -56,12 +56,14 @@ class MinecraftLauncher {
           timeout: 3600000  // 60 minutes
         };
 
-        console.log(`📁 Répertoire: ${gameDirectory}`);
-        console.log(`📥 Démarrage du téléchargement de ${version}...\n`);
+        console.log(`📁 Directory: ${gameDirectory}`);
+        console.log(`📥 Starting download for ${version}...\n`);
 
         let currentType = '';
         let progressByType = {};
         let errorCount = 0;
+
+        this.launcher.removeAllListeners();
 
         this.launcher.on('progress', (progress) => {
           if (progress && progress.type) {
@@ -130,7 +132,7 @@ class MinecraftLauncher {
         this.launcher.on('close', (code) => {
           clearTimeout(closeTimeout);
           
-          console.log(`\n[CLOSE] Process fermé avec le code: ${code}`);
+          console.log(`\n[CLOSE] Process closed with code: ${code}`);
           console.log(`📊 Statistiques:`);
           Object.entries(progressByType).forEach(([type, stats]) => {
             console.log(`   - ${type}: ${stats.count} fichiers`);
@@ -147,9 +149,9 @@ class MinecraftLauncher {
           
           if (criticalFilesExist) {
             const libCount = this.countFiles(librariesPath);
-            console.log(`✅ Téléchargement terminé!`);
-            console.log(`   - Fichiers de bibliothèque: ${libCount}`);
-            console.log(`   - Erreurs ignorées: ${errorCount}`);
+            console.log(`✅ Download completed!`);
+            console.log(`   - Library files: ${libCount}`);
+            console.log(`   - Ignored errors: ${errorCount}`);
             resolve({ success: true, downloadedFiles: libCount, errors: errorCount });
           } else {
             console.error('❌ Fichiers critiques manquants');
@@ -171,24 +173,15 @@ class MinecraftLauncher {
           }
         });
 
-        // Lancer le téléchargement
-        const minecraftProcess = this.launcher.launch(launchOptions);
-
-        if (minecraftProcess) {
-          minecraftProcess.on('error', (err) => {
-            console.error('❌ Erreur process:', err.message);
-            // Ne pas rejeter immédiatement pour les erreurs mineures
-            errorCount++;
-          });
-        }
+        this.launcher.launch(launchOptions);
 
         // Timeout de sécurité (90 minutes)
         closeTimeout = setTimeout(() => {
-          console.warn('⚠️  Timeout: Téléchargement trop long, vérification des fichiers...');
+          console.warn('⚠️ Timeout: Download taking too long, checking files...');
           
           const versionJsonPath = path.join(gameDirectory, 'versions', version, `${version}.json`);
           if (fs.existsSync(versionJsonPath)) {
-            console.log('✅ Fichiers principaux présents, on considère le téléchargement réussi');
+            console.log('✅ Main files present, considering download successful');
             resolve({ success: true, downloadedFiles: 0, timeout: true });
           } else {
             reject(new Error('Timeout - fichiers manquants'));
@@ -196,7 +189,7 @@ class MinecraftLauncher {
         }, 90 * 60 * 1000);
 
       } catch (error) {
-        console.error('❌ Erreur préparation téléchargement:', error);
+        console.error('❌ Error preparing download:', error);
         reject(error);
       }
     });
@@ -229,7 +222,7 @@ class MinecraftLauncher {
     const isInstalled = await this.checkVersionInstalled(gameDirectory, version);
     
     if (!isInstalled) {
-      console.log(`\n📥 Version ${version} manquante. Téléchargement en cours...`);
+      console.log(`\n📥 Version ${version} missing. Downloading...`);
       console.log(`⏱️  Cela peut prendre 10-30 minutes selon votre connexion...\n`);
       
       try {
@@ -238,20 +231,20 @@ class MinecraftLauncher {
         });
         
         if (result.success) {
-          console.log(`✅ Version ${version} téléchargée avec succès!`);
+          console.log(`✅ Version ${version} downloaded successfully!`);
           if (result.errors > 0) {
-            console.log(`⚠️  ${result.errors} erreurs mineures ignorées (assets manquants)`);
+            console.log(`⚠️ ${result.errors} minor errors ignored (missing assets)`);
           }
         }
       } catch (error) {
-        console.error(`❌ Erreur téléchargement: ${error.message}`);
+        console.error(`❌ Download error: ${error.message}`);
         return {
           success: false,
           error: `Impossible de télécharger Minecraft ${version}: ${error.message}`
         };
       }
     } else {
-      console.log(`✅ Version ${version} déjà installée\n`);
+      console.log(`✅ Version ${version} already installed\n`);
     }
 
     return new Promise((resolve, reject) => {
@@ -312,7 +305,7 @@ class MinecraftLauncher {
       console.log(`   Version: ${version}`);
       console.log(`   RAM: ${ram}G`);
       console.log(`   Utilisateur: ${authData.username}`);
-      console.log(`   Répertoire: ${gameDirectory}\n`);
+      console.log(`   Directory: ${gameDirectory}\n`);
 
       try {
         this.launcher.launch(launchOptions);
@@ -332,7 +325,7 @@ class MinecraftLauncher {
         let launchResolved = false;
 
         this.launcher.on('close', (code) => {
-          console.log(`\n🎮 Minecraft fermé (code: ${code})`);
+          console.log(`\n🎓 Minecraft closed (code: ${code})`);
           if (!launchResolved) {
             launchResolved = true;
             resolve({ success: true, code: code });
@@ -350,7 +343,7 @@ class MinecraftLauncher {
         // Considérer le lancement réussi après 3 secondes (une seule fois)
         setTimeout(() => {
           if (!launchResolved) {
-            console.log('✅ Minecraft démarré avec succès!');
+            console.log('✅ Minecraft started successfully!');
             launchResolved = true;
             resolve({ success: true, launched: true });
           }

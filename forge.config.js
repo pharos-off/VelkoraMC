@@ -4,7 +4,7 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     asar: true,
-    // ✅ INCLURE LES ASSETS COMME EXTRA RESOURCES
+    icon: 'src/main/icon',
     extraResource: [
       'assets/music'
     ]

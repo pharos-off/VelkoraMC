@@ -1,8 +1,7 @@
 /**
  * ✅ FONCTIONNALITÉS - Features.js
  * Fonctionnalités actives:
- * 1. Gestion des profils (créer, supprimer, dupliquer)
- * 2. Historique de jeu et statistiques
+ * 1. Historique de jeu et statistiques
  */
 
 const { ipcRenderer } = require('electron');
@@ -13,77 +12,7 @@ class LauncherFeatures {
   }
 
   /**
-   * ✅ 1. GESTION DES PROFILS - INTERFACE COMPLÈTE
-   */
-  renderProfileManager() {
-    const profiles = this.app.profiles;
-    const shouldShowCreateButton = profiles.length === 0;
-    
-    return `
-      <div class="view-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h1 class="view-title">⚙️ Profils Minecraft</h1>
-        ${shouldShowCreateButton ? `<button class="btn-primary" id="btn-new-profile" style="margin-left: 20px; white-space: nowrap;">+ Créer un profil</button>` : ''}
-      </div>
-
-      <div style="max-width: 1000px; margin: 0 auto;">
-        <div style="display: grid; gap: 12px;">
-          ${profiles.map(profile => `
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 16px; display: flex; justify-content: space-between; align-items: center;">
-              <div style="flex: 1;">
-                <div style="font-weight: 600; color: #e2e8f0; margin-bottom: 4px;">
-                  ${profile.id === 1 ? '👑' : '📁'} ${profile.name}
-                </div>
-                <div style="font-size: 13px; color: #94a3b8;">
-                  Version: ${profile.version} • Crée: ${new Date(profile.createdAt).toLocaleDateString('fr-FR')}
-                </div>
-              </div>
-              <div style="display: flex; gap: 8px;">
-                <button class="btn-icon" data-action="edit-profile" data-id="${profile.id}" title="Modifier">✏️</button>
-                <button class="btn-icon" data-action="duplicate-profile" data-id="${profile.id}" title="Dupliquer">📋</button>
-                ${profile.id !== 1 ? `<button class="btn-icon" data-action="delete-profile" data-id="${profile.id}" title="Supprimer" style="color: #ef4444;">🗑️</button>` : ''}
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-
-      <!-- Modal Création/Édition -->
-      ${this.renderProfileModal()}
-    `;
-  }
-
-  renderProfileModal() {
-    return `
-      <div id="profile-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 2000;">
-        <div style="background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 16px; padding: 24px; width: 100%; max-width: 500px;">
-          <h2 style="margin-bottom: 16px; color: #e2e8f0;">Créer un nouveau profil</h2>
-          
-          <div class="input-group">
-            <label class="input-label">Nom du profil</label>
-            <input type="text" class="input-field" id="profile-name-input" placeholder="Ex: Speedrun">
-          </div>
-
-          <div class="input-group">
-            <label class="input-label">Version Minecraft</label>
-            <select class="input-field" id="profile-version-select">
-              <option value="1.21.4">1.21.4</option>
-              <option value="1.20.4">1.20.4</option>
-              <option value="1.19.2">1.19.2</option>
-              <option value="1.18.2">1.18.2</option>
-            </select>
-          </div>
-
-          <div style="display: flex; gap: 8px; margin-top: 24px;">
-            <button class="btn-secondary" id="modal-cancel">Annuler</button>
-            <button class="btn-primary" id="modal-save">Créer</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  /**
-   * ✅ 2. HISTORIQUE DE JEU & STATISTIQUES
+   * ✅ 1. HISTORIQUE DE JEU & STATISTIQUES
    */
   async renderGameStats() {
     const stats = await ipcRenderer.invoke('get-game-stats');
@@ -94,7 +23,7 @@ class LauncherFeatures {
     
     return `
       <div class="view-header">
-        <h1 class="view-title">📊 Statistiques détaillées</h1>
+        <h1 class="view-title" style="display: flex; align-items: center; gap: 12px;">${icons.barChart} Statistiques détaillées</h1>
       </div>
 
       <div style="max-width: 1200px; margin: 0 auto;">
@@ -278,43 +207,6 @@ class LauncherFeatures {
     const id = parseInt(target.getAttribute('data-id'));
     await ipcRenderer.invoke('duplicate-profile', id);
     await this.refreshProfiles();
-  }
-
-  /**
-   * ✅ 3. GESTIONNAIRE DE MODS - À VENIR
-   */
-  renderModsManager() {
-    return `
-      <div class="view-container" style="position: relative; height: 600px;">
-        <!-- Contenu floué -->
-        <div style="opacity: 0.3; pointer-events: none;">
-          <div class="view-header">
-            <h1 class="view-title">Gestionnaire de Mods</h1>
-          </div>
-          <div style="padding: 20px; color: #94a3b8;">
-            Contenus...
-          </div>
-        </div>
-
-        <!-- Overlay "À venir" -->
-        <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; backdrop-filter: blur(8px);">
-          <div style="text-align: center; z-index: 10;">
-            <div style="font-size: 64px; margin-bottom: 20px; animation: float 3s ease-in-out infinite;">
-              🔧
-            </div>
-            <h2 style="font-size: 32px; color: #e2e8f0; margin: 0 0 12px 0; font-weight: 700;">À venir</h2>
-            <p style="color: #94a3b8; font-size: 16px; margin: 0; max-width: 300px;">
-              Le gestionnaire de mods sera bientôt disponible pour améliorer votre expérience Minecraft.
-            </p>
-            <div style="margin-top: 24px;">
-              <div style="display: inline-block; padding: 8px 16px; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 8px; color: #a5b4fc; font-size: 14px;">
-                ✨ En développement
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
   }
 
   /**

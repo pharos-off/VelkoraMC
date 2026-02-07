@@ -1,6 +1,7 @@
 const { ipcRenderer } = require('electron');
 const LauncherFeatures = require('./features.js');
-const MusicPlayer = require('./radio-player.js');
+const ModsManager = require('./ModsManager');
+//const MusicPlayer = require('./radio-player.js');
 
 // Icônes SVG inline
 const icons = {
@@ -51,6 +52,7 @@ class CraftLauncherApp {
     this.isLaunching = false; // ✅ Flag pour éviter les doubles lancements
     this.viewChangeListener = null; // ✅ Référence du listener pour cleanup
     this.globalMusicPlayer = null; // ✅ Instance globale du lecteur de musique
+    this.modsManager = new ModsManager(this);
     
     // ✅ THÈME PERSONNALISÉ
     this.theme = 'normal'; // 'normal', 'blanc', 'noir', 'custom'
@@ -106,7 +108,7 @@ class CraftLauncherApp {
     await this.loadData();
     
     this.render();
-    this.setupRadioWidget();
+    //this.setupRadioWidget();
     this.setupEventListeners();
     await this.features.setupProfileEvents();
     
@@ -140,7 +142,7 @@ class CraftLauncherApp {
           }, 8000);
         }
       } catch (error) {
-        console.log('⚠️ Erreur vérification updates:', error);
+        console.log('⚠️ Error checking updates:', error);
       }
     }, 2000);
     
@@ -162,14 +164,8 @@ class CraftLauncherApp {
     this.authData = await ipcRenderer.invoke('get-auth-data');
     
     if (this.authData) {
-      // Vérifier si l'utilisateur a accepté les conditions
-      const hasAcceptedTOS = await ipcRenderer.invoke('get-tos-acceptance');
-      
-      if (!hasAcceptedTOS) {
-        this.currentView = 'terms';
-      } else {
-        this.currentView = 'main';
-      }
+
+      this.currentView = 'main';
       
       this.playerHead = await ipcRenderer.invoke('get-player-head', this.authData.username);
     }
@@ -197,7 +193,7 @@ class CraftLauncherApp {
       if (e.target.id === 'minimize-btn') ipcRenderer.send('minimize-window');
       else if (e.target.id === 'maximize-btn') ipcRenderer.send('maximize-window');
       else if (e.target.id === 'close-btn') ipcRenderer.send('close-window');
-      else if (e.target.id === 'radio-player-btn') this.openRadioPlayer();
+      //else if (e.target.id === 'radio-player-btn') this.openRadioPlayer();
       else if (e.target.classList.contains('help-tab-btn')) {
         // Récupérer l'ID de l'onglet et afficher le contenu correspondant
         const tabName = e.target.id.replace('-btn', '');
@@ -455,74 +451,15 @@ class CraftLauncherApp {
       contentDiv.innerHTML = `<div style="padding: 20px; color: #ef4444;">Erreur: ${error.message}</div>`;
     }
   }
-  renderMainLayout() {
+renderMainLayout() {
     const headUrl = this.playerHead?.success 
       ? this.playerHead.url 
       : 'https://via.placeholder.com/128/1e293b/64748b?text=👤';
     
-    // ✅ Récupérer l'état actuel de la musique depuis localStorage
-    const currentPlaylist = localStorage.getItem('currentRadioPlaylist') || null;
-    const currentIndex = parseInt(localStorage.getItem('currentRadioIndex') || '0');
-    let radioStationName = 'Pas de musique';
-    let radioTrackName = 'Sélectionne une playlist';
-    
-    if (currentPlaylist && this.globalMusicPlayer) {
-      const playlist = this.globalMusicPlayer.playlists[currentPlaylist];
-      if (playlist) {
-        radioStationName = playlist.name;
-        const track = playlist.tracks[currentIndex];
-        if (track) {
-          radioTrackName = track.title.substring(0, 50);
-        }
-      }
-    }
-    
     return `
       <div class="titlebar">
-        <div class="titlebar-title"><span>⬛</span> CraftLauncher</div>
-        <div style="flex: 1; display: flex; justify-content: center; align-items: center; padding: 4px 0;">
-          <div id="radio-widget" data-action="open-radio" style="
-            position: relative;
-            background: transparent;
-            border: none;
-            padding: 4px 12px;
-            font-size: 12px;
-            color: #cbd5e1;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            z-index: 999;
-            max-width: 400px;
-            min-height: 32px;
-            cursor: pointer;
-            transition: all 0.3s;
-            border-radius: 6px;
-          ">
-            <svg id="radio-widget-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="min-width: 16px; color: #6366f1; flex-shrink: 0;">
-              <path d="M3 12c0-1.657.895-3.102 2.232-3.889"/>
-              <path d="M3 12c0 1.657.895 3.102 2.232 3.889"/>
-              <path d="M9 6v12"/>
-              <path d="M15 9v6"/>
-              <path d="M21 12c0-1.657-.895-3.102-2.232-3.889"/>
-              <path d="M21 12c0 1.657-.895 3.102-2.232 3.889"/>
-            </svg>
-            <div style="display: flex; flex-direction: column; overflow: hidden; flex: 1; min-width: 0;">
-              <div id="radio-station-name" style="font-weight: 700; font-size: 11px; color: #6366f1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${radioStationName}</div>
-              <div id="radio-track-name" style="font-size: 10px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${radioTrackName}</div>
-            </div>
-          </div>
-        </div>
-        <div class="titlebar-buttons" style="display: flex; gap: 8px; align-items: center;">
-          <button class="titlebar-button" id="radio-player-btn" data-action="open-radio" title="Ouvrir la radio" style="font-size: 16px; cursor: pointer; padding: 4px 8px; display: flex; align-items: center; justify-content: center;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color: #6366f1;">
-              <path d="M3 12c0-1.657.895-3.102 2.232-3.889"/>
-              <path d="M3 12c0 1.657.895 3.102 2.232 3.889"/>
-              <path d="M9 6v12"/>
-              <path d="M15 9v6"/>
-              <path d="M21 12c0-1.657-.895-3.102-2.232-3.889"/>
-              <path d="M21 12c0 1.657-.895 3.102-2.232 3.889"/>
-            </svg>
-          </button>
+        <div class="titlebar-title">CraftLauncher</div>
+        <div class="titlebar-buttons">
           <button class="titlebar-button" id="minimize-btn">−</button>
           <button class="titlebar-button" id="maximize-btn">□</button>
           <button class="titlebar-button close" id="close-btn">×</button>
@@ -575,7 +512,7 @@ class CraftLauncherApp {
               <button class="menu-item ${this.currentView === 'versions' ? 'active' : ''}" data-view="versions" disabled style="opacity: 0.5; cursor: not-allowed;">
                 <span class="menu-icon">${icons.globe}</span> Serveurs
               </button>
-              <button class="menu-item ${this.currentView === 'mods' ? 'active' : ''}" data-view="mods" disabled style="opacity: 0.5; cursor: not-allowed;">
+              <button class="menu-item ${this.currentView === 'mods' ? 'active' : ''}" data-view="mods">
                 <span class="menu-icon">${icons.mods}</span> Mods
               </button>
               <button class="menu-item ${this.currentView === 'theme' ? 'active' : ''}" data-view="theme">
@@ -610,7 +547,7 @@ class CraftLauncherApp {
   renderLogin() {
     return `
       <div class="titlebar">
-        <div class="titlebar-title"><span>⬛</span> CraftLauncher</div>
+        <div class="titlebar-title">CraftLauncher</div>
         <div class="titlebar-buttons">
           <button class="titlebar-button" id="minimize-btn">−</button>
           <button class="titlebar-button" id="maximize-btn">□</button>
@@ -874,7 +811,7 @@ class CraftLauncherApp {
           </div>
 
           <div class="login-footer">
-            <p class="login-version">CraftLauncher v3.0.0</p>
+            <p class="login-version">CraftLauncher v3.1.56</p>
             <p class="login-status">Prêt à jouer</p>
           </div>
         </div>
@@ -968,7 +905,7 @@ class CraftLauncherApp {
               <h3 style="color: #e2e8f0; margin-top: 0;">Informations à inclure</h3>
               <div style="background: rgba(15, 23, 42, 0.8); border-left: 3px solid #6366f1; padding: 15px; border-radius: 6px; color: #cbd5e1; font-family: monospace; font-size: 12px; line-height: 1.6;">
                 OS: Windows 10<br/>
-                Version Launcher: 3.0.0<br/>
+                Version Launcher: 3.1.56<br/>
                 Minecraft Version: 1.20.1<br/>
                 Java Version: 17.0.1<br/>
                 RAM disponible: 8GB<br/>
@@ -1036,7 +973,6 @@ class CraftLauncherApp {
   async renderCurrentView() {
     switch (this.currentView) {
       case 'main': return this.renderHomeView();
-      case 'terms': return this.renderTermsView();
       case 'friends': return this.renderFriendsView();
       case 'versions': return this.renderServersView();
       case 'partners': return this.renderPartnersView();
@@ -1044,76 +980,16 @@ class CraftLauncherApp {
       case 'stats': return await this.renderStatsView();
       case 'news': return this.renderNewsView();
       case 'servers': return this.renderVersionsView();
-      case 'mods': return await this.features.renderModsManager();
+      case 'mods':
+        const modsContent = await this.modsManager.render();
+        setTimeout(() => this.modsManager.setupEvents(), 100);
+        return modsContent;  // ← RETOURNER LE CONTENU
       case 'theme': return this.renderThemeSettings();
       case 'help': return this.renderHelp();
       default: return '';
     }
   }
 
-  // ✅ PAGE CONDITIONS D'UTILISATION
-  renderTermsView() {
-    return `
-      <div class="view-container" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%); border-radius: 16px; padding: 40px; position: relative; overflow: hidden;">
-        <div style="position: absolute; top: -50%; right: -10%; width: 400px; height: 400px; background: radial-gradient(circle, rgba(99, 102, 241, 0.2) 0%, transparent 70%); border-radius: 50%; animation: float 6s ease-in-out infinite;"></div>
-        <div style="position: absolute; bottom: -20%; left: 10%; width: 300px; height: 300px; background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 70%); border-radius: 50%; animation: float 8s ease-in-out infinite reverse;"></div>
-        
-        <div style="position: relative; z-index: 1;">
-          <div class="view-header" style="margin-bottom: 30px;">
-            <h1 class="view-title">📜 Conditions d'utilisation</h1>
-          </div>
-
-          <div style="max-width: 900px; margin: 0 auto;">
-            <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 30px; max-height: 500px; overflow-y: auto; margin-bottom: 30px;">
-              <div id="terms-content" style="color: #cbd5e1; line-height: 1.8; font-size: 14px;">
-                <h2 style="color: #e2e8f0; margin-top: 0;">CraftLauncher - Conditions d'utilisation</h2>
-                <h3 style="color: #a8afc7; margin-top: 20px;">1. Acceptation des conditions</h3>
-                <p>En utilisant CraftLauncher, vous acceptez ces conditions d'utilisation. Si vous n'acceptez pas ces conditions, veuillez ne pas utiliser l'application.</p>
-                
-                <h3 style="color: #a8afc7; margin-top: 20px;">2. Licence d'utilisation</h3>
-                <p>CraftLauncher est fourni sous licence MIT. Vous avez le droit d'utiliser, copier, modifier et distribuer ce logiciel sous les termes de la licence MIT.</p>
-                
-                <h3 style="color: #a8afc7; margin-top: 20px;">3. Utilisation responsable</h3>
-                <p>Vous acceptez d'utiliser CraftLauncher uniquement à des fins légales et responsables. Vous ne devez pas utiliser cette application pour:</p>
-                <ul style="margin-left: 20px;">
-                  <li>Violer les conditions d'utilisation de Minecraft ou de Microsoft</li>
-                  <li>Accéder à des comptes sans autorisation</li>
-                  <li>Installer des mods malveillants ou nuisibles</li>
-                  <li>Toute activité nuisant aux serveurs ou autres utilisateurs</li>
-                </ul>
-                
-                <h3 style="color: #a8afc7; margin-top: 20px;">4. Limitation de responsabilité</h3>
-                <p>CraftLauncher est fourni "tel quel" sans aucune garantie. Les développeurs ne sont pas responsables des dommages causés par l'utilisation de cette application.</p>
-                
-                <h3 style="color: #a8afc7; margin-top: 20px;">5. Données et confidentialité</h3>
-                <p>Les données d'authentification sont stockées localement. Discord RPC et les statistiques de jeu peuvent envoyer des données anonymes.</p>
-                
-                <h3 style="color: #a8afc7; margin-top: 20px;">6. Modifications</h3>
-                <p>Nous nous réservons le droit de modifier ces conditions d'utilisation. Les modifications entrent en vigueur dès leur publication.</p>
-                
-                <h3 style="color: #a8afc7; margin-top: 20px;">7. Contact</h3>
-                <p>Pour toute question, consultez notre GitHub: <strong style="color: #6366f1;">github.com/pharos-off/minecraft-launcher</strong></p>
-              </div>
-            </div>
-
-            <div style="display: flex; gap: 12px; justify-content: center;">
-              <label style="display: flex; align-items: center; gap: 10px; background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 15px 20px; color: #cbd5e1; cursor: pointer;">
-                <input type="checkbox" id="tos-checkbox" style="width: 18px; height: 18px; cursor: pointer;">
-                <span>J'accepte les conditions d'utilisation</span>
-              </label>
-            </div>
-
-            <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
-              <button id="accept-tos-btn" class="btn-primary" style="background: #10b981; width: 200px;" disabled>Continuer</button>
-              <button id="reject-tos-btn" class="btn-secondary" style="width: 200px;">Se déconnecter</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // ✅ PAGE D'ACCUEIL
   renderHomeView() {
     return `
       <div class="view-container" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%); border-radius: 16px; padding: 40px; position: relative; overflow: hidden;">
@@ -1329,28 +1205,28 @@ class CraftLauncherApp {
     // Liste des versions Minecraft populaires
     const versions = [
       { version: '1.21.11', release: '2025', type: 'stable' },
-      { version: '1.21.10', release: '2025', type: 'stable' },
-      { version: '1.21.9', release: '2025', type: 'stable' },
-      { version: '1.21.8', release: '2025', type: 'stable' },
-      { version: '1.21.7', release: '2025', type: 'stable' },
-      { version: '1.21.6', release: '2025', type: 'stable' },
-      { version: '1.21.5', release: '2025', type: 'stable' },
-      { version: '1.21.4', release: '2024', type: 'stable' },
-      { version: '1.21.3', release: '2024', type: 'stable' },
-      { version: '1.21.2', release: '2024', type: 'stable' },
-      { version: '1.21.1', release: '2024', type: 'stable' },
-      { version: '1.21', release: '2024', type: 'stable' },
-      { version: '1.20.4', release: '2023', type: 'stable' },
-      { version: '1.20.2', release: '2023', type: 'stable' },
-      { version: '1.20.1', release: '2023', type: 'stable' },
-      { version: '1.20', release: '2023', type: 'stable' },
-      { version: '1.19.4', release: '2023', type: 'stable' },
-      { version: '1.19.2', release: '2022', type: 'stable' },
-      { version: '1.19', release: '2022', type: 'stable' },
-      { version: '1.18.2', release: '2022', type: 'stable' },
-      { version: '1.16.5', release: '2021', type: 'stable' },
-      { version: '1.12.2', release: '2017', type: 'stable' },
-      { version: '1.8.9', release: '2015', type: 'stable' },
+      { version: '1.21.10', release: '2025', type: 'unsupported' },
+      { version: '1.21.9', release: '2025', type: 'unsupported' },
+      { version: '1.21.8', release: '2025', type: 'unsupported' },
+      { version: '1.21.7', release: '2025', type: 'unsupported' },
+      { version: '1.21.6', release: '2025', type: 'unsupported' },
+      { version: '1.21.5', release: '2025', type: 'unsupported' },
+      { version: '1.21.4', release: '2024', type: 'unsupported' },
+      { version: '1.21.3', release: '2024', type: 'unsupported' },
+      { version: '1.21.2', release: '2024', type: 'unsupported' },
+      { version: '1.21.1', release: '2024', type: 'unsupported' },
+      { version: '1.21', release: '2024', type: 'unsupported' },
+      { version: '1.20.4', release: '2023', type: 'unsupported' },
+      { version: '1.20.2', release: '2023', type: 'unsupported' },
+      { version: '1.20.1', release: '2023', type: 'unsupported' },
+      { version: '1.20', release: '2023', type: 'unsupported' },
+      { version: '1.19.4', release: '2023', type: 'unsupported' },
+      { version: '1.19.2', release: '2022', type: 'unsupported' },
+      { version: '1.19', release: '2022', type: 'unsupported' },
+      { version: '1.18.2', release: '2022', type: 'unsupported' },
+      { version: '1.16.5', release: '2021', type: 'unsupported' },
+      { version: '1.12.2', release: '2017', type: 'unsupported' },
+      { version: '1.8.9', release: '2015', type: 'unsupported' },
     ];
 
     return `
@@ -1360,14 +1236,29 @@ class CraftLauncherApp {
 
         <div class="versions-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
           ${versions.map(v => `
-            <div class="version-card" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%); border: 1px solid rgba(100, 116, 139, 0.2); border-radius: 12px; padding: 24px; cursor: pointer; transition: all 0.3s ease; hover: transform translate(0, -4px);">
+            <div class="version-card" style="
+              background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+              border: 1px solid rgba(100, 116, 139, 0.2);
+              border-radius: 12px;
+              padding: 24px;
+              cursor: pointer;
+              transition: all 0.3s ease;
+            ">
               <div style="display: flex; align-items: start; justify-content: space-between; margin-bottom: 16px;">
                 <div>
                   <h3 style="font-size: 24px; font-weight: 700; color: #e2e8f0; margin: 0 0 8px 0;">Minecraft ${v.version}</h3>
                   <p style="color: #94a3b8; margin: 0; font-size: 14px;">Sortie: ${v.release}</p>
                 </div>
-                <div style="background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 6px 12px; border-radius: 8px; font-weight: 600; font-size: 12px;">
-                  ${v.type === 'stable' ? '✓ Stable' : 'Beta'}
+                <div style="
+                  padding: 6px 12px;
+                  border-radius: 8px;
+                  font-weight: 600;
+                  font-size: 12px;
+                  white-space: nowrap; /* ⚡ Empêche le retour à la ligne */
+                  color: ${v.type === 'stable' ? '#22c55e' : '#ef4444'};
+                  background: ${v.type === 'stable' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'};
+                ">
+                  ${v.type === 'stable' ? '✓ Supported' : '✗ Unsupported'}
                 </div>
               </div>
               
@@ -1708,23 +1599,6 @@ class CraftLauncherApp {
                 ${icons.zap} S'abonner
               </button>
             </div>
-
-            <div class="shop-card" style="border: 2px solid #10b981;">
-              <div class="shop-icon" style="font-size: 40px;">💰</div>
-              <h3>Premium Lifetime</h3>
-              <p style="color: #86efac; font-weight: 600;">Une seule fois à vie</p>
-              <ul style="text-align: center; color: #9ca3af; font-size: 13px; margin: 15px 0; line-height: 1.8; list-style: none; padding: 0;">
-                <li>✓ Accès illimité à tout</li>
-                <li>✓ Gratuit à jamais</li>
-                <li>✓ Priorité suprême</li>
-                <li>✓ Badge exclusif Founder</li>
-                <li>✓ Crédits dans le launcher</li>
-              </ul>
-              <div class="shop-price">199,99 €</div>
-              <button class="btn-primary" style="width: 100%; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none;">
-                ${icons.crown} Acheter
-              </button>
-            </div>
           </div>
         </div>
 
@@ -2014,7 +1888,7 @@ class CraftLauncherApp {
   renderNewsView() {
     const news = [
       {
-        title: '🚀 CraftLauncher v3.0.0 est en ligne !',
+        title: '🚀 CraftLauncher v3.1.56 est en ligne !',
         date: '17 Janvier 2026',
         author: 'CraftLauncher Team',
         description: 'La nouvelle version majeure est ici avec un design complètement refondu, système de mods intégré, et bien plus encore !',
@@ -2330,7 +2204,7 @@ class CraftLauncherApp {
         });
       }
     }, 100);
-
+/*
     // ✅ BOUTON RADIO - DÉLÉGATION D'ÉVÉNEMENTS (fonctionne sur toutes les pages)
     const existingRadioListener = this.listeners.get('radio-click');
     if (existingRadioListener) {
@@ -2345,7 +2219,7 @@ class CraftLauncherApp {
     
     document.addEventListener('click', radioClickListener);
     this.listeners.set('radio-click', radioClickListener);
-
+*/
         // ✅ PARTENAIRES - VISITER
     document.querySelectorAll('[data-visit-partner]').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -2380,44 +2254,6 @@ class CraftLauncherApp {
       });
     });
 
-    // ✅ TERMS OF SERVICE
-    const tosCheckbox = document.getElementById('tos-checkbox');
-    const acceptTosBtn = document.getElementById('accept-tos-btn');
-    const rejectTosBtn = document.getElementById('reject-tos-btn');
-
-    if (tosCheckbox) {
-      tosCheckbox.addEventListener('change', (e) => {
-        acceptTosBtn.disabled = !e.target.checked;
-      });
-    }
-
-    if (acceptTosBtn) {
-      acceptTosBtn.addEventListener('click', async () => {
-        try {
-          // Sauvegarder l'acceptation dans le store
-          await ipcRenderer.invoke('accept-tos');
-          // Aller à la page d'accueil
-          this.currentView = 'main';
-          this.render();
-        } catch (error) {
-          console.error('Erreur acceptation TOS:', error);
-        }
-      });
-    }
-
-    if (rejectTosBtn) {
-      rejectTosBtn.addEventListener('click', async () => {
-        try {
-          await ipcRenderer.invoke('logout-account');
-          this.currentView = 'login';
-          this.authData = null;
-          this.render();
-        } catch (error) {
-          console.error('Erreur déconnexion:', error);
-        }
-      });
-    }
-
     // ✅ CONTACT PARTENAIRES
     document.getElementById('contact-partner-btn')?.addEventListener('click', () => {
       require('electron').shell.openExternal('mailto:contact.craftlauncher@gmail.com?subject=Devenir Partenaire');
@@ -2428,7 +2264,7 @@ class CraftLauncherApp {
 
     // ✅ ÉCOUTER LE SIGNAL DE DÉCONNEXION DEPUIS LES PARAMÈTRES
     this.addTrackedListener('logout-from-settings', async () => {
-      console.log('📡 Signal de déconnexion reçu');
+      console.log('📡 Disconnect signal received');
       
       this.currentView = 'login';
       this.authData = null;
@@ -2440,7 +2276,7 @@ class CraftLauncherApp {
       this.render();
       this.setupLoginEvents();
       
-      console.log('✅ Retour à la page de connexion');
+      console.log('✅ Return to login page');
     });
 
     // ✅ ÉCOUTER LES MISES À JOUR DE PROGRESSION
@@ -2471,7 +2307,7 @@ class CraftLauncherApp {
       if (ramDisplay) ramDisplay.textContent = settings.ramAllocation || 4;
       if (headerRam) headerRam.textContent = settings.ramAllocation || 4;
       
-      console.log('✅ Paramètres mis à jour:', settings);
+      console.log('✅ Settings updated:', settings);
     });
 
     // ✅ BOUTON LAUNCH
@@ -2584,7 +2420,7 @@ class CraftLauncherApp {
             launchHeader.textContent = `Version: ${version} • RAM: ${this.settings.ramAllocation || 4} GB`;
           }
           
-          console.log('✅ Version changée:', version);
+          console.log('✅ Version changed:', version);
         }
       } catch (error) {
         console.error('Erreur changement version:', error);
@@ -2768,6 +2604,7 @@ class CraftLauncherApp {
         this.setupMainEvents();
       });
     });
+    
 
     // ✅ SYSTÈME DE THÈME - PERSONNALISER
     const saveCustomThemeBtn = document.getElementById('save-custom-theme');
@@ -2800,7 +2637,7 @@ class CraftLauncherApp {
   async launchGame(serverIP = null) {
     // ✅ PROTECTION: Éviter les doubles lancements
     if (this.isLaunching) {
-      console.warn('⚠️ Lancement déjà en cours, ignoré');
+      console.warn('⚠️ Launch already in progress, ignored');
       return;
     }
 
@@ -3153,33 +2990,6 @@ class CraftLauncherApp {
       </div>
     `;
   }
-
-  openRadioPlayer() {
-    if (!this.globalMusicPlayer) {
-      this.globalMusicPlayer = new MusicPlayer();
-    }
-    this.globalMusicPlayer.open();
-  }
-
-  setupRadioWidget() {
-    const btn = document.getElementById('radio-player-btn');
-    if (btn) {
-      btn.addEventListener('click', () => {
-        this.openRadioPlayer();
-      });
-    }
-
-    const widget = document.getElementById('radio-widget');
-    if (widget) {
-      widget.addEventListener('mouseenter', () => {
-        widget.style.background = 'rgba(99, 102, 241, 0.1)';
-      });
-      widget.addEventListener('mouseleave', () => {
-        widget.style.background = 'transparent';
-      });
-    }
-  }
-
 }
 
 document.addEventListener('DOMContentLoaded', () => {

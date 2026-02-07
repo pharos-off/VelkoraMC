@@ -49,7 +49,7 @@ class LucideIcons {
     const svg = lucide.icons[this.toCamelCase(iconKey)];
     
     if (!svg) {
-      console.warn(`Icône '${iconName}' non trouvée`);
+      console.warn(`Icon '${iconName}' not found`);
       return '';
     }
 

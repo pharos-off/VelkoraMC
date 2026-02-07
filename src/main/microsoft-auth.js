@@ -42,7 +42,7 @@ class MicrosoftAuth {
 
         const authUrl = `https://login.live.com/oauth20_authorize.srf?client_id=${this.clientId}&response_type=code&redirect_uri=${encodeURIComponent(this.redirectUri)}&scope=XboxLive.signin%20offline_access&prompt=select_account`;
 
-        console.log('🔐 Démarrage authentification Microsoft...');
+        console.log('🔐 Starting Microsoft authentication...');
         authWindow.loadURL(authUrl);
 
         let isProcessing = false;
@@ -79,7 +79,7 @@ class MicrosoftAuth {
               }
 
               if (code) {
-                console.log('✅ Code d\'autorisation reçu');
+                console.log('✅ Authorization code received');
                 const result = await this.completeAuthFlow(code);
                 authWindow.close();
                 this.authInProgress = false;
@@ -125,35 +125,35 @@ class MicrosoftAuth {
    */
   async completeAuthFlow(code) {
     try {
-      console.log('📋 Étape 1: Échange du code pour les tokens...');
+      console.log('📋 Step 1: Exchanging code for tokens...');
       const tokens = await this.exchangeCodeForTokens(code);
       if (!tokens?.access_token) {
         return { success: false, error: 'Impossible d\'obtenir le token d\'accès' };
       }
       console.log('✅ Tokens Microsoft obtenus');
 
-      console.log('📋 Étape 2: Authentification Xbox Live...');
+      console.log('📋 Step 2: Xbox Live authentication...');
       const xboxToken = await this.authenticateXbox(tokens.access_token);
       if (!xboxToken) {
         return { success: false, error: 'Erreur authentification Xbox Live' };
       }
       console.log('✅ Token Xbox obtenu');
 
-      console.log('📋 Étape 3: Obtention du token XSTS...');
+      console.log('📋 Step 3: Getting XSTS token...');
       const xstsToken = await this.authenticateXSTS(xboxToken);
       if (!xstsToken?.token) {
         return { success: false, error: 'Erreur obtention token XSTS' };
       }
       console.log('✅ Token XSTS obtenu');
 
-      console.log('📋 Étape 4: Authentification Minecraft...');
+      console.log('📋 Step 4: Minecraft authentication...');
       const mcToken = await this.authenticateMinecraft(xstsToken);
       if (!mcToken) {
         return { success: false, error: 'Erreur obtention token Minecraft' };
       }
       console.log('✅ Token Minecraft obtenu');
 
-      console.log('📋 Étape 5: Récupération du profil Minecraft...');
+      console.log('📋 Step 5: Getting Minecraft profile...');
       const profile = await this.getMinecraftProfile(mcToken);
       if (!profile?.name || !profile?.id) {
         return { 
@@ -161,7 +161,7 @@ class MicrosoftAuth {
           error: 'Aucun profil Minecraft trouvé.\n\n⚠️ Assurez-vous d\'avoir acheté Minecraft Java Edition sur votre compte Microsoft.' 
         };
       }
-      console.log('✅ Profil trouvé:', profile.name);
+      console.log('✅ Profile found:', profile.name);
 
       // ✅ SAUVEGARDER LES DONNÉES
       const authData = {
@@ -178,7 +178,7 @@ class MicrosoftAuth {
       this.store.set('authData', authData);
       this.tokenCache = authData;
       
-      console.log('🎉 Authentification réussie!');
+      console.log('🎉 Authentication successful!');
       return { success: true, data: authData };
 
     } catch (error) {
@@ -247,7 +247,7 @@ class MicrosoftAuth {
         return null;
       }
 
-      console.log('🔄 Rafraîchissement du token d\'accès...');
+      console.log('🔄 Refreshing access token...');
 
       const response = await fetch('https://login.live.com/oauth20_token.srf', {
         method: 'POST',
@@ -269,7 +269,7 @@ class MicrosoftAuth {
       const data = await response.json();
 
       if (!response.ok || !data.access_token) {
-        console.error('❌ Refresh échoué:', data.error);
+        console.error('❌ Refresh failed:', data.error);
         this.store.delete('authData');
         return null;
       }
@@ -301,7 +301,7 @@ class MicrosoftAuth {
       this.store.set('authData', authData);
       this.tokenCache = authData;
 
-      console.log('✅ Token rafraîchi avec succès');
+      console.log('✅ Token refreshed successfully');
       return mcToken;
 
     } catch (error) {
@@ -318,13 +318,13 @@ class MicrosoftAuth {
     const authData = this.store.get('authData');
     
     if (!authData) {
-      console.warn('⚠️ Pas de données d\'authentification');
+      console.warn('⚠️ No authentication data');
       return null;
     }
 
     // Si le token expire dans moins de 5 minutes
     if (authData.expiresAt && Date.now() > (authData.expiresAt - 5 * 60 * 1000)) {
-      console.log('⏰ Token expiration proche, rafraîchissement...');
+      console.log('⏰ Token expiration approaching, refreshing...');
       return await this.refreshAccessToken();
     }
 

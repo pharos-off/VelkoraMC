@@ -1005,6 +1005,19 @@
       display: none !important;
     }
 
+    .mod-item {
+      width: 100% !important;
+      display: flex !important;
+      flex-direction: row !important;
+    }
+
+    /* Container des mods */
+    .mods-container {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 12px !important;
+    }
+
     /* ✅ RESPONSIVE */
     @media (max-width: 1024px) {
       .main-layout {
@@ -1293,6 +1306,21 @@
         transform: rotate(-360deg) scale(1);
         box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
       }
+    }
+
+    /* ✅ FORCER LES MODS EN COLONNE */
+    .mods-list-container {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 12px !important;
+      width: 100% !important;
+    }
+
+    .mod-item {
+      width: 100% !important;
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
     }
   </style>
 </head>
