@@ -70,6 +70,7 @@ class CraftLauncherApp {
       accentColor: '#10b981'
 
     };
+    this.fallbackAvatar = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" rx="20" ry="20" fill="#1e293b"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="48" fill="#94a3b8">👤</text></svg>');
 
     this.popularServers = [
       { name: 'Hypixel', ip: 'mc.hypixel.net', description: 'Le plus grand serveur Minecraft', players: '—' },
@@ -1095,9 +1096,21 @@ renderMainLayout() {
   }
 
   renderHomeView() {
-    const headUrl = this.playerHead?.success 
-      ? this.playerHead.url 
-      : 'https://via.placeholder.com/128/1e293b/64748b?text=👤';
+    const uuid = this.authData?.uuid || null;
+    const username = this.authData?.username || '';
+    const srcs = [];
+    if (this.authData?.type === 'microsoft' && uuid) {
+      srcs.push(`https://crafatar.com/avatars/${uuid}?size=128&overlay=true`);
+      srcs.push(`https://mc-heads.net/avatar/${uuid}/128`);
+      srcs.push(`https://minotar.net/avatar/${uuid}/128`);
+    }
+    if (username) {
+      const u = encodeURIComponent(username);
+      srcs.push(`https://mc-heads.net/avatar/${u}/128`);
+      srcs.push(`https://minotar.net/avatar/${u}/128`);
+    }
+    const firstSrc = srcs[0] || (this.playerHead?.success ? this.playerHead.url : this.fallbackAvatar);
+    const headUrl = this.playerHead?.success ? this.playerHead.url : firstSrc;
     
     const greetingMessage = this.getGreetingMessage();
     
@@ -1117,9 +1130,14 @@ renderMainLayout() {
           <div class="hero-content">
             <div class="player-avatar-large">
               <img 
+                id="player-head-img"
+                data-sources="${srcs.join('|')}"
+                data-index="0"
                 src="${headUrl}" 
                 alt="Player Head"
-                onerror="this.src='https://via.placeholder.com/120/334155/94a3b8?text=👤'"
+                referrerpolicy="no-referrer"
+                crossorigin="anonymous"
+                onerror="this.onerror=null; this.src='${this.fallbackAvatar}'"
               >
               <div class="avatar-glow"></div>
             </div>
@@ -2742,6 +2760,29 @@ renderMainLayout() {
   }
 
   setupMainEvents() {
+    // Fallback multi-CDN pour l'avatar du joueur
+    setTimeout(() => {
+      const img = document.getElementById('player-head-img');
+      if (img && !img._headFallbackAttached) {
+        img._headFallbackAttached = true;
+        img.addEventListener('error', () => {
+          try {
+            const list = (img.dataset.sources || '').split('|').filter(Boolean);
+            let idx = parseInt(img.dataset.index || '0', 10);
+            if (Number.isNaN(idx)) idx = 0;
+            if (idx + 1 < list.length) {
+              img.dataset.index = String(idx + 1);
+              img.src = list[idx + 1];
+            } else {
+              img.src = this.fallbackAvatar;
+            }
+          } catch (_) {
+            img.src = this.fallbackAvatar;
+          }
+        }, { once: false });
+      }
+    }, 0);
+    
     // ✅ CLEANUP: Supprimer l'ancien listener de changement de vue s'il existe
     if (this.viewChangeListener) {
       document.removeEventListener('click', this.viewChangeListener);
@@ -3428,6 +3469,7 @@ renderMainLayout() {
   }
 
   getRadioStations() {
+
     return [
       { name: 'Skyrock', url: 'https://icecast.skyrock.net/s/natio_mp3_128k' },
       { name: 'Fun Radio', url: 'https://icecast.funradio.fr/fun-1-44-128' },

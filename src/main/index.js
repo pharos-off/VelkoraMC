@@ -117,6 +117,13 @@ updateDiscordReference(discordRPC);
 setupDiscordHandlers(null, store, null);
 console.log('✅ Discord IPC handlers registered');
 
+// ✅ APP USER MODEL ID (icône correcte lors de l’épinglage dans la barre des tâches)
+try {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.craftlauncher.app');
+  }
+} catch (_) {}
+
 // ✅ DÉMARRAGE AUTOMATIQUE WINDOWS (RUN REGISTRY)
 ipcMain.handle('get-startup-enabled', async () => {
   try {
@@ -2057,8 +2064,17 @@ ipcMain.handle('ping-server', async (event, serverAddress) => {
 // Tête du joueur
 ipcMain.handle('get-player-head', async (event, username) => {
   try {
-    const headUrl = `https://mc-heads.net/avatar/${username}/128`;
-    return { success: true, url: headUrl };
+    const authData = store.get('authData', null);
+    const uuid = authData?.uuid;
+    // Simplifier: renvoyer directement une URL publique sans pré-fetch (certaines CDNs refusent les requêtes node)
+    if (uuid && String(uuid).length >= 32) {
+      return { success: true, url: `https://crafatar.com/avatars/${uuid}?size=128&overlay=true` };
+    }
+    if (username) {
+      const u = encodeURIComponent(username);
+      return { success: true, url: `https://mc-heads.net/avatar/${u}/128` };
+    }
+    return { success: true, url: `https://crafatar.com/avatars/00000000000000000000000000000000?size=128&overlay=true` };
   } catch (error) {
     return { success: false, error: error.message };
   }
