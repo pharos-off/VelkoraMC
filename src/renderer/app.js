@@ -7,6 +7,9 @@ const KeyboardShortcuts = require('../main/keyboard-shortcuts.js');
 
 // Icônes SVG inline
 const icons = {
+  radio: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m4 12 2-2-2-2"/><rect x="4" y="7" width="16" height="10" rx="2"/><path d="M15 7V4"/><path d="M9 12h6"/><circle cx="7.5" cy="12" r="0.5"/><circle cx="10.5" cy="12" r="0.5"/></svg>',
+  play: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+  pause: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
   home: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
   user: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
   users: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
@@ -69,13 +72,15 @@ class CraftLauncherApp {
     };
 
     this.popularServers = [
-      { name: 'Hypixel', ip: 'mc.hypixel.net', description: 'Le plus grand serveur Minecraft', players: '100,000+' },
-      { name: 'Mineplex', ip: 'us.mineplex.com', description: 'Mini-jeux variés', players: '15,000+' },
-      { name: 'CubeCraft', ip: 'play.cubecraft.net', description: 'Mini-jeux et modes de jeu', players: '20,000+' },
-      { name: 'Wynncraft', ip: 'play.wynncraft.com', description: 'MMORPG Minecraft', players: '1,000+' },
-      { name: 'The Hive', ip: 'hive.bedrock.gg', description: 'Mini-jeux populaires', players: '8,000+' }
+      { name: 'Hypixel', ip: 'mc.hypixel.net', description: 'Le plus grand serveur Minecraft', players: '—' },
+      { name: 'CubeCraft', ip: 'play.cubecraft.net', description: 'Mini-jeux et modes de jeu', players: '—' },
+      { name: 'PikaNetwork', ip: 'play.pika-network.net', description: 'Skyblock, Factions, PvP', players: '—' },
+      { name: 'Jartex', ip: 'jartex.fun', description: 'Mini-jeux & Practice', players: '—' },
+      { name: 'ManaCube', ip: 'play.manacube.com', description: 'Parkour, MMO, Survie', players: '—' },
+      { name: 'BlocksMC', ip: 'play.blocksmc.com', description: 'BedWars, SkyWars', players: '—' },
+      { name: 'Wynncraft', ip: 'play.wynncraft.com', description: 'MMORPG Minecraft', players: '—' },
+      { name: 'Minehut', ip: 'play.minehut.com', description: 'Réseau de serveurs', players: '—' },
     ];
-
     this.init();
   }
 
@@ -199,11 +204,12 @@ class CraftLauncherApp {
       const minimizeBtn = e.target.closest('#minimize-btn');
       const maximizeBtn = e.target.closest('#maximize-btn');
       const closeBtn = e.target.closest('#close-btn');
+      const radioBtn = e.target.closest('#radio-player-btn');
       
       if (minimizeBtn) ipcRenderer.send('minimize-window');
       else if (maximizeBtn) ipcRenderer.send('maximize-window');
       else if (closeBtn) ipcRenderer.send('close-window');
-      //else if (e.target.id === 'radio-player-btn') this.openRadioPlayer();
+      else if (radioBtn) this.openRadioPlayer();
       else if (e.target.classList.contains('help-tab-btn')) {
         // Récupérer l'ID de l'onglet et afficher le contenu correspondant
         const tabName = e.target.id.replace('-btn', '');
@@ -471,6 +477,7 @@ renderMainLayout() {
       <div class="titlebar">
         <div class="titlebar-title">${LauncherVersion.getName()}</div>
         <div class="titlebar-buttons">
+          <button class="titlebar-button" id="radio-player-btn" title="Radio">${icons.radio}</button>
           <button class="titlebar-button minimize" id="minimize-btn" title="Réduire">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="5" y1="12" x2="19" y2="12"/>
@@ -506,7 +513,7 @@ renderMainLayout() {
                 <span class="menu-icon"><i class="bi bi-people"></i></span> Amis
               </button>
               <button class="menu-item ${this.currentView === 'servers' ? 'active' : ''}" data-view="servers">
-                <span class="menu-icon"><i class="bi bi-search"></i></span> Versions
+                <span class="menu-icon"><i class="bi bi-globe"></i></span> Serveurs
               </button>
               <button class="menu-item ${this.currentView === 'partners' ? 'active' : ''}" data-view="partners">
                 <span class="menu-icon"><i class="bi bi-star"></i></span> Partenaires
@@ -517,14 +524,14 @@ renderMainLayout() {
             </div>
 
             <div style="border-top: 1px solid rgba(99, 102, 241, 0.1); margin: 12px 0; padding-top: 12px;">
-              <button class="menu-item ${this.currentView === 'stats' ? 'active' : ''}" data-view="stats">
+              <button class="menu-item ${this.currentView === 'stats' ? 'active' : ''}" data-view="stats" disabled style="opacity: 0.5; cursor: not-allowed;">
                 <span class="menu-icon"><i class="bi bi-bar-chart"></i></span> Statistiques
               </button>
               <button class="menu-item ${this.currentView === 'news' ? 'active' : ''}" data-view="news">
                 <span class="menu-icon"><i class="bi bi-newspaper"></i></span> Actualités
               </button>
-              <button class="menu-item ${this.currentView === 'versions' ? 'active' : ''}" data-view="versions" disabled style="opacity: 0.5; cursor: not-allowed;">
-                <span class="menu-icon"><i class="bi bi-globe"></i></span> Serveurs
+              <button class="menu-item ${this.currentView === 'versions' ? 'active' : ''}" data-view="versions">
+                <span class="menu-icon"><i class="bi bi-search"></i></span> Versions
               </button>
               <button class="menu-item ${this.currentView === 'mods' ? 'active' : ''}" data-view="mods">
                 <span class="menu-icon"><i class="bi bi-puzzle"></i></span> Mods
@@ -562,6 +569,7 @@ renderMainLayout() {
       <div class="titlebar">
         <div class="titlebar-title">${LauncherVersion.getName()}</div>
         <div class="titlebar-buttons">
+          <button class="titlebar-button" id="radio-player-btn" title="Radio">${icons.radio}</button>
           <button class="titlebar-button minimize" id="minimize-btn" title="Réduire">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="5" y1="12" x2="19" y2="12"/>
@@ -1000,12 +1008,12 @@ renderMainLayout() {
     switch (this.currentView) {
       case 'main': return this.renderHomeView();
       case 'friends': return this.renderFriendsView();
-      case 'versions': return this.renderServersView();
+      case 'versions': return this.renderVersionsView();
       case 'partners': return this.renderPartnersView();
       case 'shop': return this.renderShopView();
       case 'stats': return await this.renderStatsView();
       case 'news': return this.renderNewsView();
-      case 'servers': return this.renderVersionsView();
+      case 'servers': return this.renderServersView();
       case 'mods':
         const modsContent = await this.modsManager.render();
         setTimeout(() => this.modsManager.setupEvents(), 100);
@@ -1221,27 +1229,91 @@ renderMainLayout() {
           </div>
 
           <!-- Serveurs Suggérés -->
-          <div class="info-card servers-card disabled">
+          <div class="info-card servers-card">
             <div class="card-header">
               <span class="card-icon">${icons.globe}</span>
               <h3>Serveurs populaires</h3>
             </div>
-            <div class="server-list">
+            <div class="server-list" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
               <div class="server-item" data-server="mc.hypixel.net">
                 <div class="server-dot online"></div>
                 <div class="server-info">
                   <div class="server-name">Hypixel</div>
-                  <div class="server-players">98,234 joueurs</div>
+                  <div class="server-players">Vérification...</div>
                 </div>
-                <button class="server-join-btn" data-join-quick="mc.hypixel.net" disabled>Rejoindre</button>
+                <button class="server-join-btn" data-join-quick="mc.hypixel.net">Rejoindre</button>
               </div>
               <div class="server-item" data-server="play.cubecraft.net">
                 <div class="server-dot online"></div>
                 <div class="server-info">
                   <div class="server-name">CubeCraft</div>
-                  <div class="server-players">12,581 joueurs</div>
+                  <div class="server-players">Vérification...</div>
                 </div>
-                <button class="server-join-btn" data-join-quick="play.cubecraft.net" disabled>Rejoindre</button>
+                <button class="server-join-btn" data-join-quick="play.cubecraft.net">Rejoindre</button>
+              </div>
+              <div class="server-item" data-server="play.pika-network.net">
+                <div class="server-dot online"></div>
+                <div class="server-info">
+                  <div class="server-name">PikaNetwork</div>
+                  <div class="server-players">Vérification...</div>
+                </div>
+                <button class="server-join-btn" data-join-quick="play.pika-network.net">Rejoindre</button>
+              </div>
+              <div class="server-item" data-server="jartex.fun">
+                <div class="server-dot online"></div>
+                <div class="server-info">
+                  <div class="server-name">Jartex</div>
+                  <div class="server-players">Vérification...</div>
+                </div>
+                <button class="server-join-btn" data-join-quick="jartex.fun">Rejoindre</button>
+              </div>
+              <div class="server-item" data-server="play.manacube.com">
+                <div class="server-dot online"></div>
+                <div class="server-info">
+                  <div class="server-name">ManaCube</div>
+                  <div class="server-players">Vérification...</div>
+                </div>
+                <button class="server-join-btn" data-join-quick="play.manacube.com">Rejoindre</button>
+              </div>
+              <div class="server-item" data-server="play.blocksmc.com">
+                <div class="server-dot online"></div>
+                <div class="server-info">
+                  <div class="server-name">BlocksMC</div>
+                  <div class="server-players">Vérification...</div>
+                </div>
+                <button class="server-join-btn" data-join-quick="play.blocksmc.com">Rejoindre</button>
+              </div>
+              <div class="server-item" data-server="play.wynncraft.com">
+                <div class="server-dot online"></div>
+                <div class="server-info">
+                  <div class="server-name">Wynncraft</div>
+                  <div class="server-players">Vérification...</div>
+                </div>
+                <button class="server-join-btn" data-join-quick="play.wynncraft.com">Rejoindre</button>
+              </div>
+              <div class="server-item" data-server="play.minehut.com">
+                <div class="server-dot online"></div>
+                <div class="server-info">
+                  <div class="server-name">Minehut</div>
+                  <div class="server-players">Vérification...</div>
+                </div>
+                <button class="server-join-btn" data-join-quick="play.minehut.com">Rejoindre</button>
+              </div>
+              <div class="server-item" data-server="play.bedwarspractice.club">
+                <div class="server-dot online"></div>
+                <div class="server-info">
+                  <div class="server-name">BedWars Practice</div>
+                  <div class="server-players">Vérification...</div>
+                </div>
+                <button class="server-join-btn" data-join-quick="play.bedwarspractice.club">Rejoindre</button>
+              </div>
+              <div class="server-item" data-server="play.herobrine.org">
+                <div class="server-dot online"></div>
+                <div class="server-info">
+                  <div class="server-name">Herobrine.org</div>
+                  <div class="server-players">Vérification...</div>
+                </div>
+                <button class="server-join-btn" data-join-quick="play.herobrine.org">Rejoindre</button>
               </div>
             </div>
           </div>
@@ -2369,7 +2441,7 @@ renderMainLayout() {
         <!-- ✅ SUPPORTER LE PROJET -->
         <div style="margin-bottom: 40px;">
           <h2 style="font-size: 20px; margin-bottom: 20px; color: #e2e8f0; text-align: center;">
-            <span style="color: #ef4444;">●</span> Supporter ${LauncherVersion.getName}
+            <span style="color: #ef4444;">●</span> Supporter ${LauncherVersion.getName()}
           </h2>
           <div class="shop-grid">
             <div class="shop-card" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%);">
@@ -3027,8 +3099,80 @@ renderMainLayout() {
     document.querySelectorAll('[data-join-quick]').forEach(btn => {
       btn.addEventListener('click', () => {
         const serverIP = btn.dataset.joinQuick;
-        this.launchGame(serverIP);
+        if (this.settings && this.settings.useProtocolConnect) {
+          this.launchGame(serverIP);
+        } else {
+          this.launchGame(serverIP);
+        }
       });
+    });
+    
+    // Serveurs populaires cliquables (ligne entière)
+    document.querySelectorAll('.server-item[data-server]').forEach(item => {
+      item.style.cursor = 'pointer';
+      item.addEventListener('click', async (e) => {
+        // éviter double déclenchement si clic sur le bouton
+        if (e.target.closest('.server-join-btn')) return;
+        const serverIP = item.getAttribute('data-server');
+        if (this.settings && this.settings.useProtocolConnect) {
+          this.launchGame(serverIP);
+          return;
+        }
+        try {
+          const result = await ipcRenderer.invoke('ping-server', serverIP);
+          // Toujours tenter le lancement, même si ping échoue ou indique hors-ligne
+          this.launchGame(serverIP);
+        } catch (err) {
+          console.error('Erreur ping serveur:', err);
+          this.launchGame(serverIP);
+        }
+      });
+    });
+    
+    // Mettre à jour les compteurs joueurs via ping
+    const items = document.querySelectorAll('.server-item[data-server]');
+    items.forEach(async (it) => {
+      const ip = it.getAttribute('data-server');
+      const playersEl = it.querySelector('.server-players');
+      if (playersEl) playersEl.textContent = 'Vérification...';
+      try {
+        const res = await ipcRenderer.invoke('ping-server', ip);
+        if (res && res.online) {
+          const online = res.players?.online ?? 'N/A';
+          const max = res.players?.max ?? '';
+          if (playersEl) {
+            playersEl.textContent = max ? `${online}/${max} joueurs` : `${online} joueurs`;
+          }
+        } else {
+          // Retirer les serveurs hors ligne de l'accueil
+          it.remove();
+        }
+      } catch (_) {
+        // En cas d'erreur de ping, ne pas afficher l'entrée
+        it.remove();
+      }
+    });
+    
+    // Filtrer les serveurs offline dans la vue Serveurs (grid)
+    const cards = document.querySelectorAll('.server-card[data-server-ip]');
+    cards.forEach(async (card) => {
+      const ip = card.getAttribute('data-server-ip');
+      const playersEl = card.querySelector('.server-players');
+      if (playersEl) playersEl.textContent = 'Vérification...';
+      try {
+        const res = await ipcRenderer.invoke('ping-server', ip);
+        if (res && res.online) {
+          const online = res.players?.online ?? 'N/A';
+          const max = res.players?.max ?? '';
+          if (playersEl) {
+            playersEl.textContent = max ? `${online}/${max} joueurs` : `${online} joueurs`;
+          }
+        } else {
+          card.remove();
+        }
+      } catch (_) {
+        card.remove();
+      }
     });
 
     // ✅ MENU NAVIGATION
@@ -3283,6 +3427,185 @@ renderMainLayout() {
     });
   }
 
+  getRadioStations() {
+    return [
+      { name: 'Skyrock', url: 'https://icecast.skyrock.net/s/natio_mp3_128k' },
+      { name: 'Fun Radio', url: 'https://icecast.funradio.fr/fun-1-44-128' },
+      { name: 'RTL2', url: 'https://icecast.rtl2.fr/rtl2-1-44-128' },
+      { name: 'Virgin Radio (Europe 2)', url: 'https://europe2.lmn.fm/europe2.mp3' },
+      { name: 'France Inter', url: 'https://icecast.radiofrance.fr/franceinter-midfi.mp3' },
+      { name: 'FIP', url: 'https://icecast.radiofrance.fr/fip-midfi.mp3' },
+      { name: 'Europe 1', url: 'https://europe1.lmn.fm/europe1.mp3' },
+      { name: 'Radio Nova', url: 'https://novazz.ice.infomaniak.ch/novazz-128.mp3' }
+    ];
+  }
+
+  openRadioPlayer() {
+    let modal = document.getElementById('radio-modal');
+    if (!modal) {
+      if (!document.getElementById('radio-style')) {
+        const css = `
+          #radio-modal{position:fixed;inset:0;background:rgba(10,15,25,.7);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:9999}
+          .radio-window{width:760px;max-width:95vw;background:linear-gradient(135deg,rgba(15,23,42,.97),rgba(17,24,39,.97));border:1px solid rgba(99,102,241,.35);border-radius:16px;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,.6)}
+          .radio-header{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:16px 18px;border-bottom:1px solid rgba(99,102,241,.25)}
+          .radio-title{display:flex;align-items:center;gap:10px;color:#e2e8f0;font-weight:800;letter-spacing:.3px}
+          .radio-actions{display:flex;align-items:center;gap:10px}
+          .radio-search{background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);color:#e2e8f0;padding:10px 12px;border-radius:10px;outline:none;width:260px}
+          .btn-ghost{background:transparent;border:1px solid rgba(99,102,241,.35);color:#cbd5e1;border-radius:10px;padding:8px 12px;cursor:pointer}
+          .btn-ghost.active{background:rgba(99,102,241,.2);color:#e2e8f0}
+          .btn-primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:6px}
+          .radio-body{padding:16px;max-height:62vh;overflow:auto}
+          .radio-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+          .radio-card{display:flex;align-items:center;gap:12px;background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.25);border-radius:12px;padding:12px 14px;cursor:pointer;transition:transform .2s,box-shadow .2s}
+          .radio-card:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(99,102,241,.25)}
+          .radio-avatar{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
+          .radio-name{color:#e2e8f0;font-weight:700}
+          .radio-sub{color:#94a3b8;font-size:12px;margin-top:2px}
+          .radio-star{margin-left:auto;background:transparent;border:none;color:#94a3b8;cursor:pointer}
+          .radio-star.active{color:#f59e0b}
+          .radio-footer{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-top:1px solid rgba(99,102,241,.25);gap:12px}
+          .nowplaying{display:flex;align-items:center;gap:12px;color:#cbd5e1}
+          .live-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;animation:pulse-dot 1.6s infinite}
+          .eq{display:inline-flex;gap:3px;margin-left:6px}
+          .eq span{width:3px;background:#10b981;border-radius:2px;animation:eq 1s infinite ease-in-out}
+          .eq span:nth-child(1){height:8px;animation-delay:.1s}
+          .eq span:nth-child(2){height:14px;animation-delay:.2s}
+          .eq span:nth-child(3){height:10px;animation-delay:.3s}
+          .eq span:nth-child(4){height:16px;animation-delay:.4s}
+          .eq.paused span{animation-play-state:paused;opacity:.5}
+          .volume{display:flex;align-items:center;gap:10px;min-width:280px}
+          #radio-volume{flex:1}
+          @keyframes eq{0%{transform:scaleY(.6)}50%{transform:scaleY(1)}100%{transform:scaleY(.6)}}
+          @keyframes pulse-dot{0%,100%{opacity:.6}50%{opacity:1}}
+        `;
+        const style = document.createElement('style');
+        style.id = 'radio-style';
+        style.textContent = css;
+        document.head.appendChild(style);
+      }
+      const vol = parseFloat(localStorage.getItem('radioVolume') || '0.6');
+      const stations = this.getRadioStations();
+      const favs = new Set(JSON.parse(localStorage.getItem('radioFavorites') || '[]'));
+      const onlyFav = localStorage.getItem('radioOnlyFav') === '1';
+      const html = `
+        <div id="radio-modal">
+          <div class="radio-window">
+            <div class="radio-header">
+              <div class="radio-title">${icons.radio}<span>Radio</span></div>
+              <div class="radio-actions">
+                <input id="radio-search" class="radio-search" placeholder="Rechercher une station...">
+                <button id="radio-fav-filter" class="btn-ghost ${onlyFav?'active':''}">Favoris</button>
+                <button id="radio-playpause" class="btn-primary">${icons.play}<span>Lire</span></button>
+                <button id="radio-close" class="btn-ghost">${icons.x}</button>
+              </div>
+            </div>
+            <div class="radio-body">
+              <div id="radio-stations" class="radio-grid"></div>
+            </div>
+            <div class="radio-footer">
+              <div class="nowplaying">
+                <span class="live-dot"></span>
+                <span id="radio-current"></span>
+                <div id="radio-eq" class="eq paused"><span></span><span></span><span></span><span></span></div>
+              </div>
+              <div class="volume">
+                <span style="color:#94a3b8">Volume</span>
+                <input id="radio-volume" type="range" min="0" max="1" step="0.01" value="${vol}">
+                <span id="radio-volume-val" style="color:#cbd5e1"></span>
+              </div>
+            </div>
+            <audio id="radio-audio" preload="none"></audio>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', html);
+      modal = document.getElementById('radio-modal');
+      const audio = document.getElementById('radio-audio');
+      const volEl = document.getElementById('radio-volume');
+      const volVal = document.getElementById('radio-volume-val');
+      const currentEl = document.getElementById('radio-current');
+      const eq = document.getElementById('radio-eq');
+      const playBtn = document.getElementById('radio-playpause');
+      const searchEl = document.getElementById('radio-search');
+      const favFilterBtn = document.getElementById('radio-fav-filter');
+      const grid = document.getElementById('radio-stations');
+      audio.volume = vol;
+      volVal.textContent = Math.round(vol*100)+'%';
+      const render = () => {
+        const q = (searchEl.value||'').toLowerCase().trim();
+        const onlyFavNow = favFilterBtn.classList.contains('active');
+        const htmlCards = stations.filter(s => (!onlyFavNow || favs.has(s.url)) && s.name.toLowerCase().includes(q)).map(s => {
+          const initials = s.name.slice(0,2).toUpperCase();
+          const favClass = favs.has(s.url) ? 'active' : '';
+          return `<div class="radio-card" data-url="${s.url}" data-name="${s.name}"><div class="radio-avatar">${initials}</div><div style="flex:1"><div class="radio-name">${s.name}</div><div class="radio-sub">Live</div></div><button class="radio-star ${favClass}" data-star="${s.url}" title="Favori">${icons.star}</button></div>`;
+        }).join('');
+        grid.innerHTML = htmlCards || `<div style="color:#94a3b8;padding:12px;">Aucune station</div>`;
+      };
+      const setSrc = (name, url) => {
+        audio.src = url;
+        currentEl.textContent = name;
+        localStorage.setItem('radioStation', JSON.stringify({ name, url }));
+        audio.play().catch(()=>{});
+        playBtn.innerHTML = icons.pause + '<span>Pause</span>';
+        eq.classList.remove('paused');
+      };
+      grid.addEventListener('click', (e) => {
+        const star = e.target.closest('.radio-star');
+        if (star) {
+          const url = star.getAttribute('data-star');
+          if (favs.has(url)) favs.delete(url); else favs.add(url);
+          localStorage.setItem('radioFavorites', JSON.stringify(Array.from(favs)));
+          star.classList.toggle('active');
+          if (favFilterBtn.classList.contains('active')) render();
+          return;
+        }
+        const card = e.target.closest('.radio-card');
+        if (card) {
+          setSrc(card.dataset.name, card.dataset.url);
+        }
+      });
+      searchEl.addEventListener('input', render);
+      favFilterBtn.addEventListener('click', () => {
+        favFilterBtn.classList.toggle('active');
+        localStorage.setItem('radioOnlyFav', favFilterBtn.classList.contains('active') ? '1' : '0');
+        render();
+      });
+      volEl.addEventListener('input', () => {
+        audio.volume = parseFloat(volEl.value);
+        localStorage.setItem('radioVolume', String(audio.volume));
+        volVal.textContent = Math.round(audio.volume*100)+'%';
+      });
+      playBtn.addEventListener('click', () => {
+        if (audio.paused) {
+          audio.play().catch(()=>{});
+          playBtn.innerHTML = icons.pause + '<span>Pause</span>';
+          eq.classList.remove('paused');
+        } else {
+          audio.pause();
+          playBtn.innerHTML = icons.play + '<span>Lire</span>';
+          eq.classList.add('paused');
+        }
+      });
+      document.getElementById('radio-close').addEventListener('click', () => {
+        modal.style.display = 'none';
+      });
+      const saved = localStorage.getItem('radioStation');
+      if (saved) {
+        try {
+          const o = JSON.parse(saved);
+          if (o && o.url) setSrc(o.name || 'Radio', o.url);
+        } catch(_) {}
+      } else if (stations[0]) {
+        setSrc(stations[0].name, stations[0].url);
+      }
+      render();
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.style.display = 'none';
+      });
+    } else {
+      modal.style.display = 'flex';
+    }
+  }
   async launchGame(serverIP = null) {
     // ✅ PROTECTION: Éviter les doubles lancements
     if (this.isLaunching) {
@@ -3299,7 +3622,12 @@ renderMainLayout() {
     launchBtn.innerHTML = '<span style="font-size: 20px;">⏳</span> Lancement en cours...';
 
     try {
-      const result = await ipcRenderer.invoke('launch-minecraft', this.selectedProfile, serverIP);
+      let targetServer = serverIP;
+      if (!targetServer && this.settings && this.settings.defaultServer) {
+        const s = String(this.settings.defaultServer).trim();
+        if (s) targetServer = s;
+      }
+      const result = await ipcRenderer.invoke('launch-minecraft', this.selectedProfile, targetServer);
       
       if (!result.success) {
         launchBtn.disabled = false;

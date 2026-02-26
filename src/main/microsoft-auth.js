@@ -1,7 +1,8 @@
 const { BrowserWindow, session } = require('electron');
-const LauncherVersion = require('./launcher-version.js');
 const fetch = require('node-fetch');
 const Store = require('electron-store');
+const path = require('path');
+const crypto = require('crypto');
 
 class MicrosoftAuth {
   constructor() {
@@ -18,14 +19,12 @@ class MicrosoftAuth {
    * ✅ AUTHENTIFICATION PRINCIPALE - RÉSILIENTE ET ROBUSTE
    */
   async authenticate() {
-    // ✅ Si une fenêtre existe déjà, la fermer et bloquer
     if (this.authWindow && !this.authWindow.isDestroyed()) {
       console.log('⚠️ Une fenêtre d\'authentification existe déjà');
       this.authWindow.focus();
       return { success: false, error: 'Une fenêtre d\'authentification est déjà ouverte' };
     }
 
-    // ✅ Si une authentification est en cours, retourner la même promesse
     if (this.authInProgress && this.authPromise) {
       console.log('⚠️ Authentification déjà en cours, réutilisation de la promesse existante');
       return this.authPromise;
@@ -36,12 +35,12 @@ class MicrosoftAuth {
     this.authPromise = new Promise((resolve) => {
       try {
         const authSession = session.fromPartition('persist:auth');
-        
+
         this.authWindow = new BrowserWindow({
           width: 600,
           height: 700,
           show: true,
-          icon: require('path').join(__dirname, '..', 'assets', 'icon.png'),
+          icon: path.join(__dirname, '..', 'assets', 'icon.png'),
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -50,16 +49,24 @@ class MicrosoftAuth {
           }
         });
 
-        this.authWindow.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        this.authWindow.webContents.setUserAgent(
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        );
 
-        const authUrl = `https://login.live.com/oauth20_authorize.srf?client_id=${this.clientId}&response_type=code&redirect_uri=${encodeURIComponent(this.redirectUri)}&scope=XboxLive.signin%20offline_access&prompt=select_account`;
+        const authUrl =
+          `https://login.live.com/oauth20_authorize.srf` +
+          `?client_id=${this.clientId}` +
+          `&response_type=code` +
+          `&redirect_uri=${encodeURIComponent(this.redirectUri)}` +
+          `&scope=XboxLive.signin%20offline_access` +
+          `&prompt=select_account`;
 
         console.log('🔐 Starting Microsoft authentication...');
         this.authWindow.loadURL(authUrl);
 
         let isProcessing = false;
         let windowClosed = false;
-        
+
         const timeout = setTimeout(() => {
           if (!isProcessing && this.authWindow && !this.authWindow.isDestroyed()) {
             windowClosed = true;
@@ -72,25 +79,23 @@ class MicrosoftAuth {
         }, 5 * 60 * 1000);
 
         const handleUrl = async (url) => {
-          // Empêcher le traitement multiple
           if (isProcessing || windowClosed) return;
-          
+
           // Ignore Microsoft error pages and redirects
           if (url.includes('login.live.com/oauth20_desktop.srf') && !url.includes('code=')) {
             return;
           }
-          
+
           if (url.includes('code=') || url.includes('error=')) {
             isProcessing = true;
             clearTimeout(timeout);
-            
-            // ✅ FERMER LA FENÊTRE IMMÉDIATEMENT
+
             if (this.authWindow && !this.authWindow.isDestroyed()) {
               windowClosed = true;
               this.authWindow.close();
               this.authWindow = null;
             }
-            
+
             try {
               const urlParams = new URL(url);
               const code = urlParams.searchParams.get('code');
@@ -101,9 +106,9 @@ class MicrosoftAuth {
                 console.error('❌ Authentication error:', errorDescription || error);
                 this.authInProgress = false;
                 this.authPromise = null;
-                resolve({ 
-                  success: false, 
-                  error: errorDescription || 'Authentication cancelled' 
+                resolve({
+                  success: false,
+                  error: errorDescription || 'Authentication cancelled'
                 });
                 return;
               }
@@ -181,37 +186,44 @@ class MicrosoftAuth {
       console.log('✅ XSTS token obtained');
 
       console.log('📋 Step 4: Minecraft authentication...');
-      const mcToken = await this.authenticateMinecraft(xstsToken);
-      if (!mcToken) {
+      // ✅ mc = { access_token, expires_in }
+      const mc = await this.authenticateMinecraft(xstsToken);
+      if (!mc?.access_token) {
         return { success: false, error: 'Minecraft token error' };
       }
       console.log('✅ Minecraft token obtained');
 
       console.log('📋 Step 5: Getting Minecraft profile...');
-      const profile = await this.getMinecraftProfile(mcToken);
+      const profile = await this.getMinecraftProfile(mc.access_token);
       if (!profile?.name || !profile?.id) {
-        return { 
-          success: false, 
-          error: 'No Minecraft profile found.\n\n⚠️ Make sure you have purchased Minecraft Java Edition on your Microsoft account.' 
+        return {
+          success: false,
+          error:
+            'No Minecraft profile found.\n\n⚠️ Make sure you have purchased Minecraft Java Edition on your Microsoft account.'
         };
       }
       console.log('✅ Profile found:', profile.name);
 
       // ✅ SAVE DATA
+      const existing = this.store.get('authData') || {};
+      const clientToken = existing.clientToken || crypto.randomUUID();
+
       const authData = {
         type: 'microsoft',
         username: profile.name,
-        uuid: profile.id,
-        accessToken: mcToken,
+        uuid: profile.id, // 32 chars sans tirets (normal via API)
+        accessToken: mc.access_token, // ✅ token Minecraft services
         refreshToken: tokens.refresh_token,
-        expiresAt: Date.now() + (tokens.expires_in * 1000),
+        // ✅ expiration du token Minecraft (pas Microsoft)
+        expiresAt: Date.now() + ((mc.expires_in || 0) * 1000),
+        clientToken, // ✅ stable
         profile: profile,
         connectedAt: new Date().toISOString()
       };
 
       this.store.set('authData', authData);
       this.tokenCache = authData;
-      
+
       console.log('🎉 Authentication successful!');
       return { success: true, data: authData };
 
@@ -229,7 +241,7 @@ class MicrosoftAuth {
       try {
         const response = await fetch('https://login.live.com/oauth20_token.srf', {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             'Accept': 'application/json'
@@ -245,7 +257,7 @@ class MicrosoftAuth {
         });
 
         const data = await response.json();
-        
+
         if (!response.ok || !data.access_token) {
           console.error(`⚠️ Tentative ${i + 1}/${retries}:`, data.error || 'Erreur inconnue');
           if (i < retries - 1) {
@@ -274,7 +286,7 @@ class MicrosoftAuth {
   async refreshAccessToken() {
     try {
       const authData = this.store.get('authData');
-      
+
       if (!authData?.refreshToken) {
         console.error('❌ Pas de refresh token disponible');
         this.store.delete('authData');
@@ -285,7 +297,7 @@ class MicrosoftAuth {
 
       const response = await fetch('https://login.live.com/oauth20_token.srf', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
           'Accept': 'application/json'
@@ -321,22 +333,25 @@ class MicrosoftAuth {
         return null;
       }
 
-      const mcToken = await this.authenticateMinecraft(xstsToken);
-      if (!mcToken) {
+      const mc = await this.authenticateMinecraft(xstsToken);
+      if (!mc?.access_token) {
         console.error('❌ Erreur Minecraft lors du refresh');
         return null;
       }
 
       // ✅ METTRE À JOUR LES DONNÉES
-      authData.accessToken = mcToken;
+      authData.accessToken = mc.access_token;
       authData.refreshToken = data.refresh_token || authData.refreshToken;
-      authData.expiresAt = Date.now() + (data.expires_in * 1000);
-      
+      authData.expiresAt = Date.now() + ((mc.expires_in || 0) * 1000);
+
+      // clientToken stable
+      if (!authData.clientToken) authData.clientToken = crypto.randomUUID();
+
       this.store.set('authData', authData);
       this.tokenCache = authData;
 
       console.log('✅ Token refreshed successfully');
-      return mcToken;
+      return mc.access_token;
 
     } catch (error) {
       console.error('❌ Erreur refresh token:', error.message);
@@ -350,7 +365,7 @@ class MicrosoftAuth {
    */
   async ensureValidToken() {
     const authData = this.store.get('authData');
-    
+
     if (!authData) {
       console.warn('⚠️ No authentication data');
       return null;
@@ -373,7 +388,7 @@ class MicrosoftAuth {
       try {
         const response = await fetch('https://user.auth.xboxlive.com/user/authenticate', {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -392,7 +407,7 @@ class MicrosoftAuth {
         });
 
         const data = await response.json();
-        
+
         if (!response.ok || !data.Token) {
           console.error(`⚠️ Xbox tentative ${i + 1}/${retries}:`, data.XErr || 'Erreur inconnue');
           if (i < retries - 1) {
@@ -423,7 +438,7 @@ class MicrosoftAuth {
       try {
         const response = await fetch('https://xsts.auth.xboxlive.com/xsts/authorize', {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -441,7 +456,7 @@ class MicrosoftAuth {
         });
 
         const data = await response.json();
-        
+
         if (!response.ok || !data.Token) {
           console.error(`⚠️ XSTS tentative ${i + 1}/${retries}:`, data.XErr || 'Erreur inconnue');
           if (i < retries - 1) {
@@ -451,9 +466,9 @@ class MicrosoftAuth {
           throw new Error(data.Message || 'Erreur XSTS');
         }
 
-        return { 
-          token: data.Token, 
-          uhs: data.DisplayClaims.xui[0].uhs 
+        return {
+          token: data.Token,
+          uhs: data.DisplayClaims.xui[0].uhs
         };
       } catch (error) {
         console.error(`⚠️ XSTS tentative ${i + 1}/${retries}:`, error.message);
@@ -469,13 +484,14 @@ class MicrosoftAuth {
 
   /**
    * ✅ AUTHENTIFIER MINECRAFT
+   * Retourne { access_token, expires_in }
    */
   async authenticateMinecraft(xstsData, retries = 3) {
     for (let i = 0; i < retries; i++) {
       try {
         const response = await fetch('https://api.minecraftservices.com/authentication/login_with_xbox', {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
@@ -487,17 +503,21 @@ class MicrosoftAuth {
         });
 
         const data = await response.json();
-        
+
         if (!response.ok || !data.access_token) {
           console.error(`⚠️ Minecraft tentative ${i + 1}/${retries}:`, data.error || 'Erreur inconnue');
           if (i < retries - 1) {
             await this.delay(Math.pow(2, i) * 500);
             continue;
           }
-          throw new Error(data.error_message || 'Erreur Minecraft');
+          throw new Error(data.errorMessage || data.error_message || 'Erreur Minecraft');
         }
 
-        return data.access_token;
+        return {
+          access_token: data.access_token,
+          expires_in: data.expires_in
+        };
+
       } catch (error) {
         console.error(`⚠️ Minecraft tentative ${i + 1}/${retries}:`, error.message);
         if (i < retries - 1) {
@@ -517,7 +537,7 @@ class MicrosoftAuth {
     for (let i = 0; i < retries; i++) {
       try {
         const response = await fetch('https://api.minecraftservices.com/minecraft/profile', {
-          headers: { 
+          headers: {
             'Authorization': `Bearer ${mcToken}`,
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             'Accept': 'application/json'
@@ -535,7 +555,7 @@ class MicrosoftAuth {
         }
 
         const profile = await response.json();
-        
+
         if (!profile.name || !profile.id) {
           throw new Error('Profil invalide - données manquantes');
         }

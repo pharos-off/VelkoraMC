@@ -2373,6 +2373,95 @@
       100% { left: 240px; }
     }
 
+    .splash-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 28px 32px;
+      background: rgba(8, 12, 24, 0.65);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 16px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(99, 102, 241, 0.12) inset;
+    }
+
+    .splash-logo {
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: 28px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
+      box-shadow: 0 20px 60px rgba(99, 102, 241, 0.5);
+    }
+
+    .splash-title {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: .4px;
+      color: #e2e8f0;
+    }
+
+    .splash-spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(99, 102, 241, 0.25);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 4px 0;
+    }
+
+    .splash-progress {
+      width: 260px;
+      height: 8px;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #loading-progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #6366f1, #8b5cf6, #a855f7);
+      background-size: 200% 100%;
+      animation: gradientShift 3s linear infinite;
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.6);
+    }
+
+    #loading-percent {
+      font-size: 12px;
+      color: #94a3b8;
+      letter-spacing: 1px;
+    }
+
+    #loading-logs {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      width: 260px;
+      max-height: 60px;
+      overflow: hidden;
+      color: #94a3b8;
+      font-size: 11px;
+      line-height: 1.35;
+      text-align: left;
+      opacity: 0.9;
+    }
+
+    #loading-logs li {
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+    }
+
 </style>
 </head>
 <body>
@@ -2451,6 +2540,11 @@
       var prog = 0;
       var rafProg = null;
       var tipTimer = null;
+      // Pré-initialiser pour éviter les erreurs si cycleSteps est appelé avant l'assignation plus bas
+      var w = 0, h = 0;
+      var stars = [];
+      var sparks = [];
+      var comets = [];
       var steps = [
         'Initialisation du noyau…',
         'Chargement des modules…',

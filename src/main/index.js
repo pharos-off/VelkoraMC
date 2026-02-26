@@ -6,7 +6,7 @@ const MicrosoftAuth = require('./microsoft-auth');
 const DiscordPresence = require('./discord-rpc');
 const setupDiscordHandlers = require('./discord-handler');
 const LauncherVersion = require('./launcher-version.js');
-const { setSettingsWindow, broadcastDiscordStatus, updateDiscordReference } = require('./discord-handler');
+const { setSettingsWindow, updateDiscordReference } = require('./discord-handler');
 let _msAuthInstance = null;
 
 const si = require('systeminformation');
@@ -65,6 +65,7 @@ console.log(`🚀 ${LAUNCHER_NAME} v${LAUNCHER_VERSION} (Build ${LAUNCHER_BUILD}
 // Chemins pour les mods
 const MODS_DIR = path.join(app.getPath('userData'), 'mods');
 const MODS_DB_FILE = path.join(app.getPath('userData'), 'mods.json');
+app.setAsDefaultProtocolClient('minecraft');
 
 // S'assurer que le dossier mods existe
 function initModsDirectory() {
@@ -116,6 +117,31 @@ updateDiscordReference(discordRPC);
 setupDiscordHandlers(null, store, null);
 console.log('✅ Discord IPC handlers registered');
 
+// ✅ DÉMARRAGE AUTOMATIQUE WINDOWS (RUN REGISTRY)
+ipcMain.handle('get-startup-enabled', async () => {
+  try {
+    const s = app.getLoginItemSettings();
+    return !!s.openAtLogin;
+  } catch (e) {
+    return false;
+  }
+});
+
+ipcMain.handle('set-startup-enabled', async (event, enabled) => {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!enabled,
+      path: process.execPath,
+    });
+    const settings = store.get('settings', {});
+    settings.startupOnBoot = !!enabled;
+    store.set('settings', settings);
+    return { success: true, enabled: !!enabled };
+  } catch (e) {
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
 function createWindow() {
   const iconPath = path.join(__dirname, "../../assets/icon.ico");
   
@@ -142,6 +168,8 @@ function createWindow() {
   }
 
   mainWindow.on('closed', () => {    
+    try { if (logsWindow && !logsWindow.isDestroyed()) logsWindow.close(); } catch(_) {}
+    try { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close(); } catch(_) {}
     mainWindow = null;
   });
 }
@@ -458,7 +486,7 @@ function createLogsWindow() {
         <div class="logs-header-left">
           <div class="logs-title">📋 Logs de lancement</div>
           <div class="logs-search">
-            <input type="text" id="search-input" placeholder="Rechercher dans les logs...">
+            <input type="text" id="search-input" placeholder="Search logs...">
           </div>
         </div>
         <div class="logs-buttons">
@@ -468,7 +496,7 @@ function createLogsWindow() {
       </div>
 
       <div class="logs-container" id="logs-container">
-        <div class="logs-empty">En attente de logs...</div>
+        <div class="logs-empty" style="display:flex; align-items:center; justify-content:center; height:100%; color:#64748b;">No logs found. Launch game to generate some!</div>
       </div>
 
       <script>
@@ -569,6 +597,78 @@ function createLogsWindow() {
   });
 }
 
+// ✅ TRAY (ZONE DE NOTIFICATION WINDOWS)
+let tray = null;
+function createTray() {
+  try {
+    if (tray) return;
+    const { Tray, Menu } = require('electron');
+    const iconPath = path.join(__dirname, "../../assets/icon.ico");
+    tray = new Tray(iconPath);
+    tray.setToolTip(LAUNCHER_NAME || 'CraftLauncher');
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Ouvrir',
+        click: () => {
+          try {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.show();
+              mainWindow.focus();
+            } else {
+              createWindow();
+            }
+          } catch (_) {}
+        }
+      },
+      {
+        label: 'Masquer',
+        click: () => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } catch (_) {} }
+      },
+      { type: 'separator' },
+      {
+        label: 'Recharger',
+        click: () => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload(); } catch (_) {} }
+      },
+      { type: 'separator' },
+      {
+        label: 'Déconnecter Discord',
+        click: async () => { 
+          try { 
+            if (discordRPC) {
+              await discordRPC.setEnabled(false);
+            }
+          } catch (_) {} 
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quitter',
+        click: async () => {
+          try {
+            if (discordRPC && !_discordCleaned) {
+              _discordCleaned = true;
+              await discordRPC.destroy();
+              await new Promise(r => setTimeout(r, 200));
+            }
+          } catch (_) {}
+          app.quit();
+        }
+      }
+    ]);
+    tray.setContextMenu(contextMenu);
+    tray.on('double-click', () => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      } catch (_) {}
+    });
+  } catch (e) {
+    console.error('Tray error:', e?.message || e);
+  }
+}
+
 // AJOUTER AVANT app.whenReady():
 
 ipcMain.on('settings-updated', (event, settings) => {
@@ -638,8 +738,8 @@ async function initializeDiscord() {
     
     // Créer l'instance Discord
     discordRPC = new DiscordPresence({
-      clientId: '1459481513513975971',
-      autoReconnect: true,
+      clientId: '1476358132623212699',
+      autoReconnect: false,
       reconnectDelay: 5000,
       maxReconnectAttempts: 10
     });
@@ -686,6 +786,13 @@ async function initializeDiscord() {
 app.whenReady().then(async () => {
   // ... ton code existant ...
   
+  // Appliquer le démarrage automatique selon les paramètres sauvegardés
+  try {
+    const saved = store.get('settings', {});
+    const startup = !!saved.startupOnBoot;
+    app.setLoginItemSettings({ openAtLogin: startup, path: process.execPath });
+  } catch (_) {}
+  
   // Initialiser Discord RPC
   const discordEnabled = store.get('discord.rpcEnabled', true);
   if (discordEnabled) {
@@ -707,6 +814,26 @@ app.on('before-quit', async () => {
   }
 });
 
+app.on('will-quit', async () => {
+  try {
+    if (discordRPC && !_discordCleaned) {
+      _discordCleaned = true;
+      try { 
+        await discordRPC.destroy(); 
+        await new Promise(r => setTimeout(r, 200));
+      } catch (_) {}
+    }
+  } catch (_) {}
+});
+
+app.on('quit', async () => {
+  try {
+    if (discordRPC && !_discordCleaned) {
+      _discordCleaned = true;
+      try { await discordRPC.destroy(); } catch (_) {}
+    }
+  } catch (_) {}
+});
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
@@ -785,55 +912,7 @@ function addLog(message, type = 'info') {
   }
 }
 
-// Intercepter console.log pour capturer les logs
-const originalLog = console.log;
-const originalWarn = console.warn;
-const originalError = console.error;
-
-console.log = function(...args) {
-  originalLog.apply(console, args);
-  const message = args.map(arg => {
-    if (typeof arg === 'object') {
-      try {
-        return JSON.stringify(arg);
-      } catch (e) {
-        return String(arg);
-      }
-    }
-    return String(arg);
-  }).join(' ');
-  addLog(message, 'info');
-};
-
-console.warn = function(...args) {
-  originalWarn.apply(console, args);
-  const message = args.map(arg => {
-    if (typeof arg === 'object') {
-      try {
-        return JSON.stringify(arg);
-      } catch (e) {
-        return String(arg);
-      }
-    }
-    return String(arg);
-  }).join(' ');
-  addLog(message, 'warning');
-};
-
-console.error = function(...args) {
-  originalError.apply(console, args);
-  const message = args.map(arg => {
-    if (typeof arg === 'object') {
-      try {
-        return JSON.stringify(arg);
-      } catch (e) {
-        return String(arg);
-      }
-    }
-    return String(arg);
-  }).join(' ');
-  addLog(message, 'error');
-};
+// Les logs de la fenêtre dédiée n'affichent désormais que les logs Minecraft (via onLog)
 
 app.whenReady().then(async () => {
   initModsDirectory();
@@ -843,6 +922,9 @@ app.whenReady().then(async () => {
   if (discordEnabled) {
     await discordRPC.connect();
   }
+  
+  // Créer l'icône de zone de notification (Windows)
+  createTray();
 
   // ✅ VÉRIFIER ET INSTALLER LES MISES À JOUR AUTOMATIQUEMENT
   setTimeout(async () => {
@@ -870,6 +952,20 @@ app.on('window-all-closed', () => {
   // ✅ CLEANUP: Libérer la mémoire
   minecraftRunning = false;
   lastLaunchAttempt = 0;
+  
+  try {
+    if (discordRPC && !_discordCleaned) {
+      _discordCleaned = true;
+      // Tenter une déconnexion propre
+      if (typeof discordRPC.disconnect === 'function') {
+        discordRPC.disconnect().catch(() => {});
+      }
+      // Et détruire pour forcer la fermeture
+      if (typeof discordRPC.destroy === 'function') {
+        discordRPC.destroy().catch(() => {});
+      }
+    }
+  } catch (_) {}
   
   if (process.platform !== 'darwin') {
     app.quit();
@@ -1495,23 +1591,46 @@ ipcMain.handle('update-profile-version', async (event, version) => {
 ipcMain.handle('get-settings', async () => {
   return store.get('settings', {
     ramAllocation: 4,
-    javaPath: 'java',
+    javaPath: 'C:\\Program Files\\Java\\jdk-21.0.10\\bin\\javaw.exe',
     gameDirectory: path.join(os.homedir(), 'AppData', 'Roaming', '.minecraft'),
-    discordRPC: false
+    discordRPC: false,
+    defaultServer: '',
+    closeLauncherOnLaunch: false,
+    showLogsWindow: true,
+    useProtocolConnect: true,
+    mcWidth: 1280,
+    mcHeight: 720,
+    startupOnBoot: false
   });
 });
 
 ipcMain.handle('save-settings', async (event, settings) => {
   store.set('settings', settings);
   
-  if (settings.discordRPC !== undefined) {
-    discordRPC.setEnabled(settings.discordRPC);
-    if (settings.discordRPC) {
-      await discordRPC.connect();
-      const authData = store.get('authData');
-      if (authData) {
-        await discordRPC.setInLauncher(authData.username);
+  try {
+    if (settings.discordRPC !== undefined && discordRPC) {
+      await discordRPC.setEnabled(settings.discordRPC);
+      if (settings.discordRPC && !discordRPC.isConnected) {
+        await discordRPC.connect();
+        const authData = store.get('authData');
+        if (authData) {
+          await discordRPC.setInLauncher(authData.username);
+        }
       }
+    }
+  } catch (e) {
+    console.warn('Discord RPC update skipped:', e?.message || e);
+  }
+  
+  // Démarrage automatique Windows
+  if (settings.startupOnBoot !== undefined) {
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: !!settings.startupOnBoot,
+        path: process.execPath,
+      });
+    } catch (e) {
+      console.warn('Startup setting failed:', e?.message || e);
     }
   }
   
@@ -1596,11 +1715,16 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
     minecraftRunning = true;
     console.log('🎮 Minecraft marqué comme en cours de lancement');
 
-    // ✅ OUVRIR LA FENÊTRE DE LOGS
+    // ✅ OUVRIR LA FENÊTRE DE LOGS (selon paramètre)
     try {
-      createLogsWindow();
-      currentLogs = [];
-      console.log('📋 Fenêtre de logs ouverte');
+      const sLogs = settings.showLogsWindow;
+      if (sLogs !== false) {
+        createLogsWindow();
+        currentLogs = [];
+        console.log('📋 Fenêtre de logs ouverte');
+      } else {
+        console.log('ℹ️ Fenêtre de logs désactivée par les paramètres');
+      }
     } catch (error) {
       console.warn('⚠️ Impossible d\'ouvrir la fenêtre de logs:', error.message);
     }
@@ -1613,13 +1737,63 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
       // ✅ LANCER MINECRAFT
       console.log('🚀 Lancement en cours...');
       
+    const sendLog = (type, message) => {
+      try {
+        if (logsWindow && !logsWindow.isDestroyed()) {
+          logsWindow.webContents.send('add-log', { type, message });
+        }
+      } catch (_) {}
+    };
+    
+      // Notification de connexion en cours si un serveur est ciblé
+      try {
+        if (serverIP) {
+          const notifSettings = store.get('notificationSettings', {});
+          if (notifSettings.launchNotif !== false) {
+            const { Notification } = require('electron');
+            const notif = new Notification({
+              title: 'Connexion en cours',
+              body: `Connexion au serveur ${serverIP}…`,
+              icon: path.join(__dirname, "../../assets/icon.ico")
+            });
+            notif.show();
+          }
+        }
+      } catch (_) {}
+      
+      // Java effectif: si 'java' ou 'java.exe', utiliser javaw par défaut (ou chemin système configuré)
+      const DEFAULT_JAVA = 'C:\\Program Files\\Java\\jdk-21.0.10\\bin\\javaw.exe';
+      const fs = require('fs');
+      let effectiveJava = settings.javaPath;
+      if (!effectiveJava || /^java(\.exe)?$/i.test(effectiveJava) || /\\bin\\java\.exe$/i.test(effectiveJava)) {
+        if (fs.existsSync(DEFAULT_JAVA)) {
+          effectiveJava = DEFAULT_JAVA;
+        } else {
+          effectiveJava = (effectiveJava || 'javaw').replace(/java\.exe$/i, 'javaw.exe');
+        }
+      }
+      
       const result = await launcher.launch({
         authData: authData,
         version: profile.version,
         ram: settings.ramAllocation || 4,
         gameDirectory: gameDir,
-        javaPath: settings.javaPath || 'java',
+        javaPath: effectiveJava,
         serverIP: serverIP,
+        windowWidth: settings.mcWidth || 1280,
+        windowHeight: settings.mcHeight || 720,
+        onLog: (type, msg) => {
+          const t = (type || 'info').toString();
+          sendLog(t, msg);
+        },
+        onClose: (code) => {
+          try {
+            if (settings.closeLauncherOnLaunch && mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.show();
+              mainWindow.focus();
+            }
+          } catch (_) {}
+        },
         onProgress: (progress) => {
           // Envoyer la progression au renderer
           if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1636,6 +1810,22 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
       });
 
       console.log('✅ Résultat lancement:', result);
+      
+      // Si le client s'est fermé immédiatement avec code non nul, notifier
+      if (typeof result.code === 'number' && result.code !== 0) {
+        try {
+          const { Notification } = require('electron');
+          const notif = new Notification({
+            title: 'Minecraft s’est fermé',
+            body: `Code de sortie: ${result.code}`,
+            icon: path.join(__dirname, "../../assets/icon.ico")
+          });
+          notif.show();
+        } catch (_) {}
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('launch-error', `Fermeture immédiate (code ${result.code})`);
+        }
+      }
 
       // ✅ METTRE À JOUR DISCORD RPC (avec vérification)
       if (discordRPC && discordRPC.connected) {
@@ -1651,9 +1841,33 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
         console.log('⚠️ Discord RPC non disponible (normal si Discord fermé)');
       }
       
+      // ✅ NOTIFICATION: Lancement réussi
+      try {
+        const notifSettings = store.get('notificationSettings', {});
+        if (notifSettings.launchNotif !== false) {
+          const { Notification } = require('electron');
+          const notif = new Notification({
+            title: 'Minecraft lancé',
+            body: serverIP ? `Connexion à ${serverIP}` : 'Bon jeu !',
+            icon: path.join(__dirname, "../../assets/icon.ico")
+          });
+          notif.show();
+        }
+      } catch (e) {
+        console.warn('Notification error:', e?.message || e);
+      }
+      
       console.log('='.repeat(60));
       console.log('✅ LANCEMENT TERMINÉ');
       console.log('='.repeat(60));
+      
+      // Fermer/masquer le launcher si choisi
+      try {
+        if (settings.closeLauncherOnLaunch && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.hide();
+          console.log('🪟 Launcher masqué (paramètre activé)');
+        }
+      } catch (_) {}
       
       return {
         success: result.success !== false,
@@ -1663,6 +1877,22 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
     } catch (launchError) {
       console.error('❌ Erreur lors du lancement:', launchError);
       console.error('Stack:', launchError.stack);
+      
+      // ❌ NOTIFICATION: Erreur de lancement
+      try {
+        const notifSettings = store.get('notificationSettings', {});
+        if (notifSettings.errorNotif !== false) {
+          const { Notification } = require('electron');
+          const notif = new Notification({
+            title: 'Erreur de lancement',
+            body: launchError.message || 'Une erreur est survenue',
+            icon: path.join(__dirname, "../../assets/icon.ico")
+          });
+          notif.show();
+        }
+      } catch (e) {
+        console.warn('Notification error:', e?.message || e);
+      }
       
       // ✅ Réinitialiser l'état
       minecraftRunning = false;

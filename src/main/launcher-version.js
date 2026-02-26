@@ -6,10 +6,10 @@
 const LauncherVersion = {
   // Informations principales
   name: 'CraftLauncher',
-  version: '3.5.0',
+  version: '3.8.0',
   versionName: '',
-  build: '20260214',
-  releaseDate: '2025-02-14',
+  build: '20260226',
+  releaseDate: '2026-02-26',
   channel: 'stable', // stable, beta, dev
   
   // Informations du développeur

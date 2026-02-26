@@ -1,6 +1,6 @@
 {
   "name": "caftlauncher",
-  "version": "3.7.8",
+  "version": "3.8.0",
   "description": "Launcher Minecraft",
   "main": "src/main/index.js",
   "scripts": {
@@ -52,6 +52,11 @@
       "src/**/*",
       "package.json"
     ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "include": "build/installer.nsh"
+    },
     "win": {
       "target": [
         "nsis"

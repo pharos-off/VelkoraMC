@@ -7,7 +7,7 @@ class DiscordPresence extends EventEmitter {
     super();
     
     // Configuration
-    this.clientId = options.clientId || '1459481513513975971';
+    this.clientId = options.clientId || '1476358132623212699';
     this.autoReconnect = options.autoReconnect !== false;
     this.reconnectDelay = options.reconnectDelay || 2000;
     this.maxReconnectAttempts = options.maxReconnectAttempts || 10;
@@ -510,7 +510,7 @@ class DiscordPresence extends EventEmitter {
    * Clear the activity
    */
   async clear() {
-    if (!this.isConnected || !this.client || this.isDisconnecting) {
+    if (!this.client) {
       return false;
     }
 
@@ -545,7 +545,6 @@ class DiscordPresence extends EventEmitter {
       console.log('⚠️ Already disconnecting, skipping duplicate call');
       return true;
     }
-    this.isDisconnecting = true;
 
     // Désactiver la reconnexion automatique temporairement
     const autoReconnectBackup = this.autoReconnect;
@@ -570,6 +569,8 @@ class DiscordPresence extends EventEmitter {
         console.error('⚠️ Error clearing activity during disconnect:', error.message);
       }
     }
+
+    this.isDisconnecting = true;
 
     // Détruire le client
     if (this.client) {

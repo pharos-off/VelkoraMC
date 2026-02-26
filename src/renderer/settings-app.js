@@ -11,6 +11,15 @@ ipcRenderer.on('navigate-to-tab', (event, tabName) => {
     if (tabButton) {
       tabButton.click();
       console.log(`✅ Navigation vers l'onglet: ${tabName}`);
+      if (tabName === 'discord') {
+        setTimeout(() => {
+          try {
+            if (!discordTestManager) initDiscordTest();
+            const btn = document.getElementById('test-discord-btn');
+            if (btn) btn.click();
+          } catch (_) {}
+        }, 300);
+      }
     }
   }, 300);
 });
@@ -28,13 +37,16 @@ async function loadSettings() {
       const ramSlider = document.getElementById('ram-slider');
       const ramValue = document.getElementById('ram-value');
       const ramHelpText = document.getElementById('ram-help-text');
+      const startupToggle = document.getElementById('startup-toggle');
       
       // Get actual system RAM
       const systemRam = await ipcRenderer.invoke('get-system-ram');
+      const startupEnabled = await ipcRenderer.invoke('get-startup-enabled');
       
       if (gameDirInput) gameDirInput.value = settings.gameDirectory || '';
       if (discordToggle) discordToggle.checked = settings.discordRPC || false;
       if (fullscreenToggle) fullscreenToggle.checked = settings.fullscreen || false;
+      if (startupToggle) startupToggle.checked = settings.startupOnBoot !== undefined ? settings.startupOnBoot : !!startupEnabled;
       if (ramSlider) {
         ramSlider.max = systemRam;
         ramSlider.value = Math.min(settings.ramAllocation || 4, systemRam);
@@ -616,10 +628,99 @@ function renderSettings() {
 
       <div class="settings-content">
         <div class="settings-section" id="game-tab">
-          <h2>Game Settings</h2>
+          <h2>Paramètres du jeu</h2>
+          
           <div class="settings-card">
-            <h3>Game Options</h3>
-            <p style="color: #9ca3af;">Game settings coming soon...</p>
+            <h3>Version de Minecraft</h3>
+            <div class="setting-item">
+              <label>Version utilisée (profil principal)</label>
+              <select id="settings-version-select" class="input-field">
+                <option value="1.21.11">1.21.11</option>
+                <option value="1.21.10">1.21.10</option>
+                <option value="1.21.9">1.21.9</option>
+                <option value="1.21.8">1.21.8</option>
+                <option value="1.21.7">1.21.7</option>
+                <option value="1.21.6">1.21.6</option>
+                <option value="1.21.5">1.21.5</option>
+                <option value="1.21.4">1.21.4</option>
+                <option value="1.21.3">1.21.3</option>
+                <option value="1.21.2">1.21.2</option>
+                <option value="1.21.1">1.21.1</option>
+                <option value="1.21">1.21</option>
+                <option value="1.20.6">1.20.6</option>
+                <option value="1.20.4">1.20.4</option>
+                <option value="1.20.2">1.20.2</option>
+                <option value="1.20.1">1.20.1</option>
+                <option value="1.20">1.20</option>
+                <option value="1.19.4">1.19.4</option>
+                <option value="1.19.2">1.19.2</option>
+                <option value="1.19">1.19</option>
+                <option value="1.18.2">1.18.2</option>
+                <option value="1.16.5">1.16.5</option>
+                <option value="1.12.2">1.12.2</option>
+                <option value="1.8.9">1.8.9</option>
+              </select>
+              <p class="help-text">Change la version pour le profil principal</p>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h3>Serveur par défaut</h3>
+            <div class="setting-item">
+              <label>Adresse du serveur (ex: play.hypixel.net ou ip:port)</label>
+              <input type="text" id="default-server-input" class="input-field" placeholder="exemple.com">
+              <p class="help-text">Utilisé quand vous cliquez sur Rejoindre rapide ou quand aucun serveur n'est choisi</p>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h3>Java (optionnel)</h3>
+            <div class="setting-item">
+              <label>Chemin vers javaw.exe</label>
+              <input type="text" id="java-path-input" class="input-field" placeholder="exemple: C:\\Program Files\\Java\\bin\\javaw.exe">
+              <p class="help-text">Laisse vide pour utiliser la configuration par défaut</p>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h3>Affichage du jeu</h3>
+            <div class="setting-item">
+              <label>Résolution</label>
+              <div style="display: flex; gap: 12px;">
+                <input type="number" id="mc-width" class="input-field" min="640" max="3840" placeholder="1280" style="flex: 1;">
+                <input type="number" id="mc-height" class="input-field" min="480" max="2160" placeholder="720" style="flex: 1;">
+              </div>
+              <p class="help-text">Définit la taille de la fenêtre Minecraft</p>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h3>Comportement du lancement</h3>
+            <div class="setting-item">
+              <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" id="close-launcher-toggle" style="width: 18px; height: 18px; margin-right: 12px; cursor: pointer;">
+                <span>Masquer le launcher après lancement</span>
+              </label>
+              <p class="help-text">Cache la fenêtre principale une fois le jeu démarré</p>
+            </div>
+            <div class="setting-item" style="margin-top: 16px;">
+              <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" id="show-logs-toggle" style="width: 18px; height: 18px; margin-right: 12px; cursor: pointer;">
+                <span>Afficher la fenêtre des logs</span>
+              </label>
+              <p class="help-text">Ouvre une fenêtre dédiée aux logs de lancement</p>
+            </div>
+            <div class="setting-item" style="margin-top: 16px;">
+              <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" id="startup-toggle" style="width: 18px; height: 18px; margin-right: 12px; cursor: pointer;">
+                <span>Lancer ${LauncherVersion.getName()} au démarrage de Windows</span>
+              </label>
+              <p class="help-text">Ajoute l'application dans les Applications de démarrage (Gestionnaire des tâches)</p>
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button id="save-game-settings-btn" class="btn-primary">Valider et sauvegarder</button>
           </div>
         </div>
 
@@ -853,7 +954,7 @@ function renderSettings() {
           <!-- Configuration Discord RPC -->
           <div class="settings-card">
             <h3>Configuration Discord RPC</h3>
-            <div class="setting-item">
+            <div class="setting-item" style="margin-top: 0;">
               <label style="display: flex; align-items: center; cursor: pointer;">
                 <input type="checkbox" id="discord-rpc-main-toggle" style="width: 18px; height: 18px; margin-right: 12px; cursor: pointer;">
                 <span>Activer Discord Rich Presence</span>
@@ -1033,6 +1134,15 @@ function renderSettings() {
       const tabId = btn.dataset.tab + '-tab';
       const section = document.getElementById(tabId);
       if (section) section.style.display = 'block';
+      if (btn.dataset.tab === 'discord') {
+        setTimeout(() => {
+          try {
+            if (!discordTestManager) initDiscordTest();
+            const btnTest = document.getElementById('test-discord-btn');
+            if (btnTest) btnTest.click();
+          } catch (_) {}
+        }, 250);
+      }
     });
   });
 
@@ -1047,6 +1157,20 @@ function renderSettings() {
       if (result.success) {
         document.getElementById('game-dir-input').value = result.path;
         currentSettings.gameDirectory = result.path;
+      }
+    });
+  }
+
+  // ✅ STARTUP TOGGLE (DÉMARRAGE WINDOWS)
+  const startupToggle = document.getElementById('startup-toggle');
+  if (startupToggle) {
+    startupToggle.addEventListener('change', async (e) => {
+      try {
+        const enabled = !!e.target.checked;
+        currentSettings.startupOnBoot = enabled;
+        await ipcRenderer.invoke('set-startup-enabled', enabled);
+      } catch (error) {
+        console.error('Erreur startup-toggle:', error);
       }
     });
   }
@@ -1280,7 +1404,9 @@ function renderSettings() {
           gameDirectory: document.getElementById('game-dir-input').value,
           discordRPC: document.getElementById('discord-rpc-toggle').checked,
           fullscreen: document.getElementById('fullscreen-toggle').checked,
-          ramAllocation: parseInt(document.getElementById('ram-slider').value)
+          ramAllocation: parseInt(document.getElementById('ram-slider').value),
+          defaultServer: (document.getElementById('default-server-input')?.value || '').trim(),
+          startupOnBoot: !!document.getElementById('startup-toggle')?.checked
         };
 
         await ipcRenderer.invoke('save-settings', settings);
@@ -1380,6 +1506,45 @@ function renderSettings() {
           installUpdateBtn.disabled = false;
           installUpdateBtn.textContent = originalText;
         }
+      }
+    });
+  }
+
+  // ✅ SAVE GAME TAB
+  const saveGameBtn = document.getElementById('save-game-settings-btn');
+  if (saveGameBtn) {
+    saveGameBtn.addEventListener('click', async () => {
+      saveGameBtn.disabled = true;
+      saveGameBtn.textContent = 'Sauvegarde...';
+      try {
+        const defaultServer = (document.getElementById('default-server-input')?.value || '').trim();
+        const version = document.getElementById('settings-version-select')?.value || null;
+        const javaPath = (document.getElementById('java-path-input')?.value || '').trim();
+        const width = parseInt(document.getElementById('mc-width')?.value || '1280', 10);
+        const height = parseInt(document.getElementById('mc-height')?.value || '720', 10);
+        const closeOnLaunch = !!document.getElementById('close-launcher-toggle')?.checked;
+        const showLogs = !!document.getElementById('show-logs-toggle')?.checked;
+        const useProtocol = !!document.getElementById('protocol-connect-toggle')?.checked;
+        
+        if (version) {
+          await ipcRenderer.invoke('update-profile-version', version);
+        }
+        await ipcRenderer.invoke('save-settings', { 
+          ...(currentSettings || {}), 
+          defaultServer,
+          javaPath,
+          mcWidth: width,
+          mcHeight: height,
+          closeLauncherOnLaunch: closeOnLaunch,
+          showLogsWindow: showLogs,
+          useProtocolConnect: useProtocol
+        });
+        alert('✓ Paramètres du jeu sauvegardés');
+      } catch (e) {
+        alert('✗ Erreur lors de la sauvegarde');
+      } finally {
+        saveGameBtn.disabled = false;
+        saveGameBtn.textContent = 'Valider et sauvegarder';
       }
     });
   }

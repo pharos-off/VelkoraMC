@@ -1,21 +1,62 @@
 const { Client, Authenticator } = require('minecraft-launcher-core');
-const LauncherVersion = require('./launcher-version.js');
 const fetch = require('node-fetch');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 
 class MinecraftLauncher {
+
   constructor() {
     this.launcher = new Client();
     this.versionsCache = null;
     this.versionsCacheTime = 0;
-    this.CACHE_DURATION = 5 * 60 * 1000; // Cache de 5 minutes
+    this.CACHE_DURATION = 5 * 60 * 1000;
+  }
+
+  getRequiredJavaMajor(mcVersion) {
+    const m = String(mcVersion).match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+    if (!m) return 8;
+
+    const major = parseInt(m[1]);
+    const minor = parseInt(m[2]);
+
+    if (major > 1 || minor >= 20) return 21;
+    if (minor >= 18) return 17;
+    return 8;
   }
 
   async checkVersionInstalled(gameDirectory, version) {
-    const versionPath = path.join(gameDirectory, 'versions', version, `${version}.json`);
-    return fs.existsSync(versionPath);
+    return fs.existsSync(
+      path.join(gameDirectory, 'versions', version, `${version}.json`)
+    );
+  }
+
+  async getJavaMajor(javaPathCandidate) {
+    return new Promise((resolve) => {
+      try {
+        const { execFile } = require('child_process');
+        let bin = 'java';
+        if (javaPathCandidate && typeof javaPathCandidate === 'string') {
+          // Prefer java.exe for version check
+          bin = javaPathCandidate.replace(/javaw(\.exe)?$/i, 'java$1');
+        }
+        execFile(bin, ['-version'], { windowsHide: true }, (err, stdout, stderr) => {
+          if (err && !stderr) return resolve(null);
+          const text = String(stderr || stdout || '');
+          const m = text.match(/version\s+"([^"]+)"/i);
+          if (!m) return resolve(null);
+          const ver = m[1]; // e.g., "1.8.0_312", "17.0.3", "21"
+          let major = null;
+          if (ver.startsWith('1.8')) major = 8;
+          else {
+            const n = ver.match(/^(\d+)(?:\.\d+)?/);
+            major = n ? parseInt(n[1], 10) : null;
+          }
+          resolve(major);
+        });
+      } catch (_) {
+        resolve(null);
+      }
+    });
   }
 
   // ✅ TÉLÉCHARGER AVEC GESTION D'ERREUR AMÉLIORÉE
@@ -69,18 +110,18 @@ class MinecraftLauncher {
         this.launcher.on('progress', (progress) => {
           if (progress && progress.type) {
             currentType = progress.type;
-            
-            const percent = progress.total > 0 
+
+            const percent = progress.total > 0
               ? Math.round((progress.task / progress.total) * 100)
               : 0;
-            
+
             // Suivre la progression par type
             if (!progressByType[progress.type]) {
               progressByType[progress.type] = { last: 0, count: 0 };
             }
-            
+
             progressByType[progress.type].count++;
-            
+
             // Log tous les 5% ou changement de type
             if (percent % 5 === 0 && percent !== progressByType[progress.type].last) {
               console.log(`   [${progress.type}] ${percent}% (${progress.task}/${progress.total})`);
@@ -101,11 +142,11 @@ class MinecraftLauncher {
         this.launcher.on('debug', (message) => {
           if (message && typeof message === 'string') {
             const msgLower = message.toLowerCase();
-            
+
             if (msgLower.includes('error') || msgLower.includes('failed')) {
               console.error('[DEBUG ERROR]', message);
               errorCount++;
-              
+
               // Si trop d'erreurs sur les assets, on continue quand même
               if (msgLower.includes('asset') && errorCount > 50) {
                 console.warn('⚠️  Beaucoup d\'erreurs sur les assets, mais on continue...');
@@ -132,22 +173,22 @@ class MinecraftLauncher {
 
         this.launcher.on('close', (code) => {
           clearTimeout(closeTimeout);
-          
+
           console.log(`\n[CLOSE] Process closed with code: ${code}`);
           console.log(`📊 Statistiques:`);
           Object.entries(progressByType).forEach(([type, stats]) => {
             console.log(`   - ${type}: ${stats.count} fichiers`);
           });
-          
+
           // Vérifier si les fichiers critiques existent
           const versionJsonPath = path.join(gameDirectory, 'versions', version, `${version}.json`);
           const versionJarPath = path.join(gameDirectory, 'versions', version, `${version}.jar`);
           const librariesPath = path.join(gameDirectory, 'libraries');
-          
-          const criticalFilesExist = fs.existsSync(versionJsonPath) && 
-                                      fs.existsSync(versionJarPath) &&
-                                      fs.existsSync(librariesPath);
-          
+
+          const criticalFilesExist = fs.existsSync(versionJsonPath) &&
+            fs.existsSync(versionJarPath) &&
+            fs.existsSync(librariesPath);
+
           if (criticalFilesExist) {
             const libCount = this.countFiles(librariesPath);
             console.log(`✅ Download completed!`);
@@ -162,11 +203,11 @@ class MinecraftLauncher {
 
         this.launcher.on('error', (err) => {
           console.error('❌ Erreur launcher:', err.message);
-          
+
           // Ne rejeter que si c'est une erreur critique
-          if (err.message.includes('ENOTFOUND') || 
-              err.message.includes('ECONNREFUSED') ||
-              err.message.includes('authentication')) {
+          if (err.message.includes('ENOTFOUND') ||
+            err.message.includes('ECONNREFUSED') ||
+            err.message.includes('authentication')) {
             reject(err);
           } else {
             errorCount++;
@@ -179,7 +220,7 @@ class MinecraftLauncher {
         // Timeout de sécurité (90 minutes)
         closeTimeout = setTimeout(() => {
           console.warn('⚠️ Timeout: Download taking too long, checking files...');
-          
+
           const versionJsonPath = path.join(gameDirectory, 'versions', version, `${version}.json`);
           if (fs.existsSync(versionJsonPath)) {
             console.log('✅ Main files present, considering download successful');
@@ -201,7 +242,7 @@ class MinecraftLauncher {
     let count = 0;
     try {
       if (!fs.existsSync(dir)) return 0;
-      
+
       const files = fs.readdirSync(dir, { withFileTypes: true });
       for (const file of files) {
         if (file.isDirectory()) {
@@ -217,20 +258,23 @@ class MinecraftLauncher {
   }
 
   async launch(options) {
-    const { authData, version, ram, gameDirectory, javaPath, serverIP } = options;
+    const {
+      authData, version, ram, gameDirectory, javaPath, serverIP,
+      windowWidth, windowHeight, onProgress, onLog, onClose
+    } = options;
 
     // ✅ VÉRIFIER ET TÉLÉCHARGER SI NÉCESSAIRE
     const isInstalled = await this.checkVersionInstalled(gameDirectory, version);
-    
+
     if (!isInstalled) {
       console.log(`\n📥 Version ${version} missing. Downloading...`);
       console.log(`⏱️  Cela peut prendre 10-30 minutes selon votre connexion...\n`);
-      
+
       try {
         const result = await this.downloadVersion(version, gameDirectory, (progress) => {
           // Progress callback pour l'UI si besoin
         });
-        
+
         if (result.success) {
           console.log(`✅ Version ${version} downloaded successfully!`);
           if (result.errors > 0) {
@@ -248,24 +292,72 @@ class MinecraftLauncher {
       console.log(`✅ Version ${version} already installed\n`);
     }
 
+    // ✅ Résolution javaw (sans console)
+    let resolvedJava = (javaPath && String(javaPath).trim())
+      ? String(javaPath).trim()
+      : "javaw";
+
+    // si chemin vers java.exe → remplacer par javaw.exe
+    resolvedJava = resolvedJava.replace(/java\.exe$/i, "javaw.exe");
+
+    // si juste "java"
+    if (/^java$/i.test(resolvedJava)) {
+      resolvedJava = "javaw";
+    }
+    resolvedJava = resolvedJava.replace(/java\.exe$/i, 'javaw.exe');
+
+    // ✅ Check Java version si possible
+    const requiredMajor = this.getRequiredJavaMajor(version);
+    let javaMajor = null;
+    try {
+      if (resolvedJava.includes('\\') || resolvedJava.includes('/')) {
+        const binDir = path.dirname(resolvedJava);
+        const rootDir = path.dirname(binDir);
+        const releaseFile = path.join(rootDir, 'release');
+        if (fs.existsSync(releaseFile)) {
+          const txt = fs.readFileSync(releaseFile, 'utf8');
+          const m = txt.match(/JAVA_VERSION="([^"]+)"/);
+          if (m && m[1]) {
+            const ver = m[1];
+            if (ver.startsWith('1.8')) javaMajor = 8;
+            else {
+              const n = ver.match(/^(\d+)/);
+              javaMajor = n ? parseInt(n[1], 10) : null;
+            }
+          }
+        }
+      }
+    } catch (_) { }
+
+    if (onLog) onLog('info', `Java requis: ${requiredMajor}+, Java détecté: ${javaMajor ?? 'inconnu'}`);
+    if (javaMajor && javaMajor < requiredMajor) {
+      return { success: false, error: `Java ${requiredMajor}+ requis pour Minecraft ${version}. Java détecté: ${javaMajor}.` };
+    }
+
     return new Promise((resolve, reject) => {
       let authorization;
-      
+
       if (authData.type === 'microsoft') {
+
+        // sécurité : si pas encore de clientToken, on en crée un
+        if (!authData.clientToken) {
+          const crypto = require('crypto');
+          authData.clientToken = crypto.randomUUID();
+        }
+
         authorization = {
-          access_token: authData.accessToken,
-          client_token: authData.uuid,
-          uuid: authData.uuid,
+          access_token: authData.accessToken,   // token Minecraft services
+          client_token: authData.clientToken,   // ✅ UUID random stable
+          uuid: authData.uuid,                  // UUID joueur (OK)
           name: authData.username,
-          user_properties: JSON.stringify({})
+          user_properties: "{}"
         };
-      } else {
-        authorization = Authenticator.getAuth(authData.username);
       }
 
       const launchOptions = {
         authorization: authorization,
         root: gameDirectory,
+        javaPath: resolvedJava,
         version: {
           number: version,
           type: "release"
@@ -275,58 +367,103 @@ class MinecraftLauncher {
           min: `${Math.max(1, ram - 1)}G`
         },
         window: {
-          width: 1280,
-          height: 720
+          width: parseInt(windowWidth || 1280, 10),
+          height: parseInt(windowHeight || 720, 10)
         },
+
+        // ✅ IMPORTANT:
+        // customArgs = JVM args (donc PAS de --server / --quickPlayMultiplayer ici)
+        // customLaunchArgs = arguments Minecraft (OK ici si besoin)
+        customArgs: [],
+        customLaunchArgs: [],
+
         // ✅ DÉTACHER COMPLÈTEMENT LE PROCESSUS ET CACHER LA CONSOLE
-        detached: true,
-        windowsHide: true,
-        customArgs: []
+        windowsHide: true
       };
 
-      const javawPath = javaPath
-        ? javaPath.replace(/java\.exe$/i, 'javaw.exe')
-        : 'javaw';
-        
-      launchOptions.javaPath = javawPath;
+      function parseMcVersion(v) {
+        // extrait les 3 premiers nombres (supporte "1.8.9", "1.21.11", "1.8.9-forge", etc.)
+        const m = String(v || '').match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+        if (!m) return [0, 0, 0];
+        return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3] || '0', 10)];
+      }
 
-      launchOptions.javaPath =
-        "C:\\Program Files\\Java\\jdk-21\\bin\\javaw.exe";
+      function isAtLeast(v, target) {
+        const a = parseMcVersion(v);
+        const b = target;
+        for (let i = 0; i < 3; i++) {
+          const x = a[i] || 0, y = b[i] || 0;
+          if (x > y) return true;
+          if (x < y) return false;
+        }
+        return true;
+      }
 
+      launchOptions.customArgs = launchOptions.customArgs || [];
+      launchOptions.customLaunchArgs = [];
 
       if (serverIP) {
-        const [host, port] = serverIP.split(':');
-        launchOptions.server = {
-          host: host,
-          port: port || "25565"
-        };
+        const [hostRaw, portRaw] = String(serverIP).split(':');
+        const host = hostRaw?.trim();
+        const port = parseInt(portRaw || '25565', 10) || 25565;
+
+        // parse version safe
+        const m = String(version).match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+        const major = m ? parseInt(m[1], 10) : 1;
+        const minor = m ? parseInt(m[2], 10) : 0;
+
+        console.log(`MC version parsed = ${major}.${minor}`);
+
+        // ===== 1.20+ =====
+        if (major > 1 || minor >= 20) {
+          launchOptions.customLaunchArgs.push(
+            "--quickPlayMultiplayer",
+            `${host}:${port}`
+          );
+          console.log("Using QuickPlay");
+        }
+
+        // ===== <= 1.19 =====
+        else {
+          launchOptions.customLaunchArgs.push(
+            "--server", host,
+            "--port", String(port)
+          );
+          console.log("Using legacy server args");
+        }
       }
 
       console.log(`🎮 Lancement Minecraft...`);
       console.log(`   Version: ${version}`);
       console.log(`   RAM: ${ram}G`);
       console.log(`   Utilisateur: ${authData.username}`);
-      console.log(`   Directory: ${gameDirectory}\n`);
+      console.log(`   Directory: ${gameDirectory}`);
+      if (serverIP) console.log(`   Serveur: ${serverIP}`);
+      console.log('');
 
       try {
         this.launcher.launch(launchOptions);
-        
+
         this.launcher.on('debug', (e) => {
           if (e && typeof e === 'string' && (e.includes('Error') || e.includes('error'))) {
             console.log('[DEBUG]', e);
+            if (onLog) onLog('debug', e);
           }
         });
 
         this.launcher.on('data', (e) => {
           if (e && typeof e === 'string') {
             console.log('[GAME]', e.substring(0, 100));
+            if (onLog) onLog('info', e.substring(0, 300));
           }
         });
-        
+
         let launchResolved = false;
 
         this.launcher.on('close', (code) => {
           console.log(`\n🎓 Minecraft closed (code: ${code})`);
+          if (onLog) onLog(code === 0 ? 'success' : 'error', `Minecraft closed (code: ${code})`);
+          try { if (typeof onClose === 'function') onClose(code); } catch (_) { }
           if (!launchResolved) {
             launchResolved = true;
             resolve({ success: true, code: code });
@@ -335,6 +472,7 @@ class MinecraftLauncher {
 
         this.launcher.on('error', (err) => {
           console.error('❌ Erreur Minecraft:', err);
+          if (onLog) onLog('error', String(err?.message || err));
           if (!launchResolved) {
             launchResolved = true;
             reject(err);
@@ -345,6 +483,7 @@ class MinecraftLauncher {
         setTimeout(() => {
           if (!launchResolved) {
             console.log('✅ Minecraft started successfully!');
+            if (onLog) onLog('success', 'Minecraft started');
             launchResolved = true;
             resolve({ success: true, launched: true });
           }
@@ -378,11 +517,9 @@ class MinecraftLauncher {
 
         const response = await fetch('https://launchermeta.mojang.com/mc/game/version_manifest.json', {
           signal: controller.signal,
-          headers: {
-            'User-Agent': 'CraftLauncher/3.0'
-          }
+          headers: { 'User-Agent': 'CraftLauncher/3.0' }
         });
-        
+
         clearTimeout(timeout);
 
         if (!response.ok) {
@@ -390,7 +527,7 @@ class MinecraftLauncher {
         }
 
         const data = await response.json();
-        
+
         const versions = data.versions
           .filter(v => v.type === 'release')
           .slice(0, 30)
@@ -408,7 +545,7 @@ class MinecraftLauncher {
         return versions;
       } catch (error) {
         lastError = error;
-        // Pas de log de tentative - juste silent retry
+        // silent retry
       }
     }
 
@@ -478,15 +615,15 @@ class MinecraftLauncher {
 
   async checkJavaInstallation() {
     const { exec } = require('child_process');
-    
+
     return new Promise((resolve) => {
-      exec('java -version', (error, stdout, stderr) => {
+      exec('javaw -version', (error, stdout, stderr) => {
         if (error) {
           resolve({ installed: false, version: null });
         } else {
           const versionMatch = stderr.match(/version "(.+?)"/);
-          resolve({ 
-            installed: true, 
+          resolve({
+            installed: true,
             version: versionMatch ? versionMatch[1] : 'Unknown'
           });
         }
