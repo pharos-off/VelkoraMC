@@ -1,4 +1,4 @@
-# CraftLauncher
+# VelkoraMC
 
 Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur exceptionnelle avec authentification Microsoft, gestion des profils, optimisation des ressources, et bien plus encore!
 
@@ -52,19 +52,18 @@ Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur
 ## 🐛 Bugs et suggestions
 
 Avez-vous trouvé un bug ou avez une suggestion ?
-- 📝 Ouvrez une [Issue](https://github.com/pharos-off/minecraft-launcher/issues)
-- 🤝 Créez une [Pull Request](https://github.com/pharos-off/minecraft-launcher/pulls)
-- 💬 Contactez-nous : [contact.craftlauncher@gmail.com](mailto:contact.craftlauncher@gmail.com)
+- 📝 Ouvrez une [Issue](https://github.com/pharos-off/VelkoraMC/issues)
+- 🤝 Créez une [Pull Request](https://github.com/pharos-off/VelkoraMC/pulls)
 
 ---
 
 ## 📄 Licence
 
-### [CraftLauncher License v1 (CLv1)](./LICENSE)
+### [VelkoraMC License v1 (CLv1)](./LICENSE)
 
 **Copyright © 2026 Eloan**
 
-CraftLauncher est fourni sous la **Licence CraftLauncher v1 (CLv1)**, une licence personnalisée qui combine les droits de la licence MIT avec des conditions supplémentaires spécifiques à ce projet.
+VelkoraMC est fourni sous la **Licence VelkoraMC v1 (CLv1)**, une licence personnalisée qui combine les droits de la licence MIT avec des conditions supplémentaires spécifiques à ce projet.
 
 ---
 
@@ -79,7 +78,6 @@ CraftLauncher est fourni sous la **Licence CraftLauncher v1 (CLv1)**, une licenc
 
 ## 📞 Contact
 
-- **Email** : [contact.craftlauncher@gmail.com](mailto:contact.craftlauncher@gmail.com)
 - **GitHub** : [@Pharsos](https://github.com/pharos-off)
 - **Discord** : Rejoignez notre serveur communautaire
 
@@ -113,11 +111,12 @@ CraftLauncher est fourni sous la **Licence CraftLauncher v1 (CLv1)**, une licenc
 
 **Fait avec ❤️ par [Pharos](https://github.com/pharos-off)**
 
-Rejoignez notre communauté et aidez-nous à améliorer CraftLauncher !
+Rejoignez notre communauté et aidez-nous à améliorer VelkoraMC !
 
-[⭐ Star sur GitHub](https://github.com/pharos-off/minecraft-launcher) • [🐛 Signaler un bug](https://github.com/pharos-off/minecraft-launcher/issues) • [💬 Discuter](https://github.com/pharos-off/minecraft-launcher/discussions)
+[⭐ Star sur GitHub](https://github.com/pharos-off/VelkoraMC) • [🐛 Signaler un bug](https://github.com/pharos-off/VelkoraMC/issues) • [💬 Discuter](https://github.com/pharos-off/VelkoraMC/discussions)
 
 </div>
+
 
 
 
