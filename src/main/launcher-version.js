@@ -5,8 +5,8 @@
 
 const LauncherVersion = {
   // Informations principales
-  name: 'CraftLauncher',
-  version: '3.8.0',
+  name: 'VelkoraMC',
+  version: '3.8.1',
   versionName: '',
   build: '20260226',
   releaseDate: '2026-02-26',
@@ -14,9 +14,8 @@ const LauncherVersion = {
   
   // Informations du développeur
   author: 'Pharos_Off',
-  website: 'https://github.com/pharos-off/minecraft-launcher',
-  discordServer: 'https://discord.gg/craftlauncher',
-  email: 'contact.craftlauncher@gmail.com',
+  website: 'https://github.com/pharos-off/miVelkoraMC',
+  discordServer: 'https://discord.gg/VelkoraMC',
   
   // Méthodes utilitaires
   getFullVersion() {

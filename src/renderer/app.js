@@ -228,11 +228,11 @@ class CraftLauncherApp {
       }
       else if (e.target.classList.contains('bug-report-btn')) {
         // Ouvrir le lien GitHub pour créer un rapport
-        ipcRenderer.send('open-external', 'https://github.com/pharos-off/minecraft-launcher/issues/new');
+        ipcRenderer.send('open-external', 'https://github.com/pharos-off/miVelkoraMC/issues/new');
       }
       else if (e.target.classList.contains('pr-request-btn')) {
         // Ouvrir le lien GitHub pour les pull requests
-        ipcRenderer.send('open-external', 'https://github.com/pharos-off/minecraft-launcher/pulls');
+        ipcRenderer.send('open-external', 'https://github.com/pharos-off/miVelkoraMC/pulls');
       }
     });
 

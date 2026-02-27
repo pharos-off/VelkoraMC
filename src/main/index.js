@@ -120,7 +120,7 @@ console.log('✅ Discord IPC handlers registered');
 // ✅ APP USER MODEL ID (icône correcte lors de l’épinglage dans la barre des tâches)
 try {
   if (process.platform === 'win32') {
-    app.setAppUserModelId('com.craftlauncher.app');
+    app.setAppUserModelId('com.velkoramc.app');
   }
 } catch (_) {}
 
@@ -2234,7 +2234,7 @@ async function checkUpdatesAndInstall() {
     const currentVersion = pkg.version;
     
     // Récupérer les releases
-    const response = await fetch('https://api.github.com/repos/pharos-off/minecraft-launcher/releases', {
+    const response = await fetch('https://api.github.com/repos/pharos-off/miVelkoraMC/releases', {
       headers: { 'User-Agent': 'CraftLauncher' }
     });
     
@@ -2325,7 +2325,7 @@ ipcMain.handle('check-updates', async () => {
     console.log(`[o] Checking for updates (Current: v${currentVersion})...`);
     
     // Récupérer les 5 dernières releases
-    const response = await fetch('https://api.github.com/repos/pharos-off/minecraft-launcher/releases', {
+    const response = await fetch('https://api.github.com/repos/pharos-off/miVelkoraMC/releases', {
       headers: { 'User-Agent': '${LAUNCHER_NAME}' }
     });
     
