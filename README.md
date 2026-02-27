@@ -14,7 +14,7 @@ Un launcher **Minecraft complet et moderne** offrant une expérience utilisateur
 
 1. Téléchargez la dernière version depuis [GitHub Releases](https://github.com/pharos-off/minecraft-launcher/releases)
 2. Exécutez l'installateur
-3. Lancez CraftLauncher !
+3. Lancez VelkoraMC !
 
 ---
 
@@ -116,6 +116,7 @@ Rejoignez notre communauté et aidez-nous à améliorer VelkoraMC !
 [⭐ Star sur GitHub](https://github.com/pharos-off/VelkoraMC) • [🐛 Signaler un bug](https://github.com/pharos-off/VelkoraMC/issues) • [💬 Discuter](https://github.com/pharos-off/VelkoraMC/discussions)
 
 </div>
+
 
 
 
