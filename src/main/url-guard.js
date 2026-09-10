@@ -10,6 +10,7 @@ class UrlGuard {
       'www.minecraft.net',
       'login.live.com',
       'login.microsoftonline.com',
+      'paypal.me',
       'localhost'
     ]);
   }

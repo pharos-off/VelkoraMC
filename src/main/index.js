@@ -130,8 +130,8 @@ async function waitForInternet(timeoutMs = 15000, intervalMs = 2500) {
   return false;
 }
 
-const LAUNCHER_VERSION = '4.7.0';
-const LAUNCHER_BUILD = '20260901';
+const LAUNCHER_VERSION = '4.7.1';
+const LAUNCHER_BUILD = '20260910';
 const LAUNCHER_NAME = 'Velkora Client';
 function getAssetPath(...segments) {
   if (app.isPackaged) {
@@ -3302,11 +3302,6 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
     }
     lastLaunchAttempt = now;
 
-    // ✅ VÉRIFICATION 2b: Empêcher un relancement immédiat juste après la fermeture
-    if (lastGameClosedAt && (now - lastGameClosedAt) < 10000) {
-      console.warn('⚠️ Lancement empêché: le jeu a été fermé récemment');
-      return { success: false, error: 'Le jeu vient d\'être fermé, attendez avant de relancer.' };
-    }
     // ✅ VÉRIFICATION 3: Minecraft déjà en cours
     if (minecraftRunning) {
       console.warn('⚠️ Minecraft déjà en cours');
@@ -3354,6 +3349,32 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
         store.set('authData', authData);
       }
       authData = store.get('authData', authData);
+
+      // Validate the token against the Minecraft profile before creating the
+      // process. This prevents stale services tokens from producing "Invalid
+      // session" only after the game has already started.
+      try {
+        const minecraftProfile = await _msAuthInstance.getMinecraftProfile(validToken, 1);
+        if (minecraftProfile?.name && minecraftProfile?.id) {
+          authData.username = minecraftProfile.name;
+          authData.uuid = minecraftProfile.id;
+          authData.profile = minecraftProfile;
+          store.set('authData', authData);
+        }
+      } catch (profileError) {
+        if (/HTTP (401|403)/i.test(String(profileError?.message || ''))) {
+          const refreshedToken = await _msAuthInstance.refreshAccessToken();
+          if (!refreshedToken) {
+            return {
+              success: false,
+              error: 'Session Microsoft invalide, veuillez vous reconnecter.'
+            };
+          }
+          authData = store.get('authData', authData);
+        } else {
+          throw profileError;
+        }
+      }
     }
 
     console.log('✅ Auth:', authData.type, '-', authData.username);
@@ -3480,6 +3501,7 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
         loader: effectiveProfile.loader || 'vanilla',
         ram: settings.ramAllocation || 4,
         gameDirectory: gameDir,
+        fallbackGameDirectory: getGameDir(),
         javaPath: effectiveJava,
         serverIP: serverIP,
         windowWidth: settings.mcWidth || 1280,
@@ -3489,6 +3511,12 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
           sendLog(t, msg);
         },
         onClose: (code) => {
+          minecraftRunning = false;
+          lastGameClosedAt = Date.now();
+          setTimeout(() => {
+            lastGameClosedAt = 0;
+          }, 15000);
+
           try {
             recordGameSession({
               version: effectiveProfile.version,
@@ -3497,18 +3525,17 @@ ipcMain.handle('launch-minecraft', async (event, profile, serverIP) => {
               startTime: sessionStartTime,
               exitCode: code
             });
-            // Envoyer un signal au renderer pour indiquer que le jeu a fermé
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('game-closed', { code });
-            }
-            // Marquer le moment de la fermeture pour éviter un relancement immédiat
-            try { lastGameClosedAt = Date.now(); setTimeout(() => { lastGameClosedAt = 0; }, 15000); } catch(_) {}
-            minecraftRunning = false;
-            if (settings.closeLauncherOnLaunch && mainWindow && !mainWindow.isDestroyed()) {
+          } catch (sessionError) {
+            console.error('❌ Impossible d’enregistrer la session Minecraft:', sessionError);
+          }
+
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('game-closed', { code });
+            if (settings.closeLauncherOnLaunch) {
               mainWindow.show();
               mainWindow.focus();
             }
-          } catch (_) {}
+          }
         },
         onProgress: (progress) => {
           // Envoyer la progression au renderer
@@ -5725,7 +5752,7 @@ ipcMain.on('open-external', (event, url) => {
   try {
     const parsed = new URL(String(url));
     const allowedProtocols = ['https:', 'mailto:'];
-    const allowedHosts = ['github.com', 'discord.gg', 'discord.com', 'minecraft.net', 'www.minecraft.net'];
+    const allowedHosts = ['github.com', 'discord.gg', 'discord.com', 'minecraft.net', 'www.minecraft.net', 'paypal.me'];
     if (!allowedProtocols.includes(parsed.protocol)) return;
     if (parsed.protocol === 'https:' && !allowedHosts.includes(parsed.hostname)) return;
     require('electron').shell.openExternal(parsed.toString());

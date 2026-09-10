@@ -102,7 +102,7 @@ class CraftLauncherApp {
     this.isLaunching = false; // ✅ Flag pour éviter les doubles lancements
     this.networkOnline = true;
     this.networkStatus = 'unknown';
-    this.selectedLaunchLoader = 'vanilla';
+    this.selectedLaunchLoader = this.selectedProfile?.loader || 'vanilla';
     this.viewChangeListener = null; // ✅ Référence du listener pour cleanup
     this.globalMusicPlayer = null; // ✅ Instance globale du lecteur de musique
     this.ui = new UIFeedback({ namespace: 'main-app-ui' });
@@ -455,7 +455,7 @@ class CraftLauncherApp {
   getActiveLaunchLoader(version = this.selectedProfile?.version) {
     const availableLoaders = this.getAvailableLoadersForVersion(version);
     if (!availableLoaders.some(item => item.loader === this.selectedLaunchLoader)) {
-      this.selectedLaunchLoader = 'vanilla';
+      this.selectedLaunchLoader = this.selectedProfile?.loader || 'vanilla';
     }
 
     return this.selectedLaunchLoader;
@@ -588,6 +588,7 @@ class CraftLauncherApp {
       
       this.render();
       //this.setupRadioWidget();
+      this.showDonationPopup();
       this.setupEventListeners();
       await this.features.setupProfileEvents();
       
@@ -661,7 +662,7 @@ class CraftLauncherApp {
 
     this.profiles = profiles;
     this.selectedProfile = this.profiles[0];
-    this.selectedLaunchLoader = 'vanilla';
+    this.selectedLaunchLoader = this.selectedProfile?.loader || 'vanilla';
 
     this.settings = settings;
     this.maxRam = maxRam;
@@ -1281,6 +1282,25 @@ renderMainLayout() {
           color: #475569;
           margin-top: 8px;
         }
+        .login-donation {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 16px;
+          padding: 9px 14px;
+          border: 1px solid rgba(250, 194, 19, 0.35);
+          border-radius: 9px;
+          background: rgba(250, 194, 19, 0.08);
+          color: #facc15;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .login-donation:hover {
+          background: rgba(250, 194, 19, 0.16);
+          transform: translateY(-1px);
+        }
       </style>
 
       <div class="login-container">
@@ -1302,6 +1322,8 @@ renderMainLayout() {
           <div class="login-footer">
             <p class="login-version">${LauncherVersion.getName()} v${LauncherVersion.version}</p>
             <p class="login-status">Prêt à jouer</p>
+            <p style="color: #94a3b8; font-size: 11px; line-height: 1.5; margin: 12px 0 0;">Développé seul, chaque amélioration demande beaucoup de temps.</p>
+            <button id="paypal-donate-login-btn" class="login-donation"><i class="bi bi-paypal"></i> Soutenir le développement</button>
           </div>
         </div>
       </div>
@@ -1988,9 +2010,15 @@ renderMainLayout() {
           </div>
 
           ${availableLoaders.length > 0 ? `
-            <div class="loader-submenu" style="opacity: 0.5; pointer-events: none; cursor: not-allowed;">
+            <div class="loader-submenu">
               <div class="loader-submenu-label">Mode de lancement</div>
-              <p style="font-size: 12px; color: #94a3b8;">Modifiez le loader dans la section Mods</p>
+              <div class="loader-options">
+                <button type="button" class="loader-option-btn ${activeLaunchLoader === 'vanilla' ? 'active' : ''}" data-loader-option="vanilla">Vanilla</button>
+                ${availableLoaders.map(item => `
+                  <button type="button" class="loader-option-btn ${activeLaunchLoader === item.loader ? 'active' : ''}" data-loader-option="${item.loader}">${item.label}</button>
+                `).join('')}
+              </div>
+              <p id="loader-selection-hint" class="loader-submenu-hint">${loaderHint}</p>
             </div>
           ` : ''}
 
@@ -3493,6 +3521,11 @@ renderMainLayout() {
 
   setupLoginEvents() {
     const microsoftBtn = document.getElementById('ms-login-btn');
+    const paypalDonateBtn = document.getElementById('paypal-donate-login-btn');
+
+    if (paypalDonateBtn) {
+      paypalDonateBtn.addEventListener('click', () => this.openPayPalDonation());
+    }
 
     if (microsoftBtn) {
       microsoftBtn.addEventListener('click', async () => {
@@ -3513,6 +3546,256 @@ renderMainLayout() {
         }
       });
     }
+  }
+
+  openPayPalDonation(amount = null) {
+    const paypalUrl = amount
+      ? `https://paypal.me/PharosOff/${encodeURIComponent(amount)}`
+      : 'https://paypal.me/PharosOff';
+    try {
+      const openExternal = window.electron?.shell?.openExternal;
+      if (typeof openExternal === 'function') {
+        Promise.resolve(openExternal(paypalUrl)).catch((error) => {
+          console.error('Impossible d\'ouvrir PayPal:', error);
+        });
+        return;
+      }
+      ipcRenderer.send('open-external', paypalUrl);
+    } catch (error) {
+      console.error('Impossible d\'ouvrir PayPal:', error);
+    }
+  }
+
+  showDonationPopup() {
+    if (this.donationPopupShown) return;
+    this.donationPopupShown = true;
+
+    setTimeout(() => {
+      if (document.getElementById('donation-popup')) return;
+
+      const style = document.createElement('style');
+      style.id = 'donation-popup-styles';
+      style.textContent = `
+        #donation-popup {
+          position: fixed;
+          inset: 0;
+          z-index: 26000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          background: rgba(2, 6, 23, 0.72);
+          backdrop-filter: blur(12px);
+          animation: donation-fade-in 0.28s ease-out;
+        }
+        .donation-popup-card {
+          position: relative;
+          width: min(470px, 100%);
+          padding: 34px;
+          overflow: hidden;
+          border: 1px solid rgba(129, 140, 248, 0.35);
+          border-radius: 24px;
+          background: linear-gradient(145deg, #172554 0%, #111827 58%, #0f172a 100%);
+          box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55), 0 0 70px rgba(99, 102, 241, 0.18);
+          color: #f8fafc;
+          text-align: center;
+          max-height: calc(100vh - 48px);
+          overflow-y: auto;
+          animation: donation-slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .donation-popup-card::before {
+          content: '';
+          position: absolute;
+          width: 220px;
+          height: 220px;
+          top: -130px;
+          right: -60px;
+          border-radius: 50%;
+          background: rgba(129, 140, 248, 0.22);
+          filter: blur(8px);
+        }
+        .donation-popup-close {
+          position: absolute;
+          top: 14px;
+          right: 16px;
+          width: 30px;
+          height: 30px;
+          border: 0;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.08);
+          color: #cbd5e1;
+          font-size: 20px;
+          line-height: 1;
+          cursor: pointer;
+        }
+        .donation-popup-close:hover { background: rgba(255, 255, 255, 0.16); color: white; }
+        .donation-popup-icon {
+          position: relative;
+          display: grid;
+          place-items: center;
+          width: 58px;
+          height: 58px;
+          margin: 0 auto 18px;
+          border-radius: 18px;
+          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+          box-shadow: 0 12px 30px rgba(99, 102, 241, 0.35);
+          font-size: 27px;
+        }
+        .donation-popup-card h2 { position: relative; margin: 0 0 12px; font-size: 24px; }
+        .donation-popup-card p { position: relative; margin: 0 auto 24px; max-width: 370px; color: #cbd5e1; font-size: 14px; line-height: 1.65; }
+        .donation-popup-kicker { position: relative; margin-bottom: 8px; color: #a5b4fc; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+        .donation-popup-impact { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 20px; }
+        .donation-popup-impact div { padding: 10px 6px; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 12px; background: rgba(15, 23, 42, 0.48); color: #cbd5e1; font-size: 11px; line-height: 1.35; }
+        .donation-popup-impact strong { display: block; margin-bottom: 3px; color: #f8fafc; font-size: 13px; }
+        .donation-popup-section-title { position: relative; margin: 0 0 9px; color: #e2e8f0; font-size: 12px; font-weight: 700; text-align: left; }
+        .donation-popup-amounts { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+        .donation-popup-amount { padding: 10px 4px; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; background: rgba(15, 23, 42, 0.55); color: #cbd5e1; font-weight: 700; cursor: pointer; }
+        .donation-popup-amount:hover, .donation-popup-amount.selected { border-color: #818cf8; background: rgba(99, 102, 241, 0.25); color: white; }
+        .donation-popup-choice { position: relative; min-height: 22px; margin: 0 0 16px; color: #a5b4fc; font-size: 12px; }
+        .donation-popup-tabs { position: relative; display: flex; gap: 7px; margin: 0 0 16px; }
+        .donation-popup-tab { flex: 1; padding: 9px 6px; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 9px; background: rgba(15, 23, 42, 0.45); color: #94a3b8; font-size: 11px; font-weight: 700; cursor: pointer; }
+        .donation-popup-tab.active, .donation-popup-tab:hover { border-color: #818cf8; background: rgba(99, 102, 241, 0.2); color: white; }
+        .donation-popup-panel { position: relative; display: none; text-align: left; }
+        .donation-popup-panel.active { display: block; }
+        .donation-popup-list { display: grid; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; color: #cbd5e1; font-size: 12px; line-height: 1.45; }
+        .donation-popup-list li::before { content: '✓'; display: inline-block; width: 22px; color: #a5b4fc; font-weight: 800; }
+        .donation-popup-roadmap { display: grid; gap: 8px; margin-bottom: 18px; }
+        .donation-popup-roadmap div { padding: 9px 11px; border-left: 3px solid #818cf8; border-radius: 7px; background: rgba(15, 23, 42, 0.48); color: #cbd5e1; font-size: 12px; }
+        .donation-popup-faq { padding: 10px 0; border-bottom: 1px solid rgba(148, 163, 184, 0.14); color: #cbd5e1; font-size: 12px; line-height: 1.45; }
+        .donation-popup-faq summary { color: #f8fafc; font-weight: 700; cursor: pointer; }
+        .donation-popup-custom { display: none; width: 100%; margin: 0 0 12px; padding: 10px; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; background: rgba(15, 23, 42, 0.6); color: white; }
+        .donation-popup-custom.visible { display: block; }
+        .donation-popup-note { position: relative; margin: 14px 0 0; color: #64748b; font-size: 10px; line-height: 1.45; }
+        .donation-popup-progress { position: relative; height: 6px; margin: 0 0 20px; overflow: hidden; border-radius: 99px; background: rgba(148, 163, 184, 0.16); }
+        .donation-popup-progress span { display: block; width: 64%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6366f1, #a78bfa); }
+        .donation-popup-paypal {
+          position: relative;
+          width: 100%;
+          padding: 13px 18px;
+          border: 0;
+          border-radius: 12px;
+          background: linear-gradient(135deg, #0070ba, #003087);
+          color: white;
+          font-size: 14px;
+          font-weight: 700;
+          cursor: pointer;
+          box-shadow: 0 10px 24px rgba(0, 48, 135, 0.35);
+        }
+        .donation-popup-paypal:hover { filter: brightness(1.12); transform: translateY(-1px); }
+        .donation-popup-later {
+          position: relative;
+          margin-top: 14px;
+          border: 0;
+          background: transparent;
+          color: #94a3b8;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .donation-popup-later:hover { color: #e2e8f0; }
+        @keyframes donation-fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes donation-slide-up { from { opacity: 0; transform: translateY(18px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+      `;
+      document.head.appendChild(style);
+
+      const popup = document.createElement('div');
+      popup.id = 'donation-popup';
+      popup.innerHTML = `
+        <div class="donation-popup-card" role="dialog" aria-modal="true" aria-labelledby="donation-popup-title">
+          <button class="donation-popup-close" type="button" aria-label="Fermer">×</button>
+          <div class="donation-popup-icon">❤</div>
+          <div class="donation-popup-kicker">Un petit coup de pouce</div>
+          <h2 id="donation-popup-title">Soutenir Velkora</h2>
+          <p>Je développe cette application seul. Chaque amélioration demande beaucoup de temps, et votre soutien m'aide à continuer le développement et la maintenance.</p>
+          <div class="donation-popup-tabs">
+            <button class="donation-popup-tab active" data-panel="impact-panel" type="button">Votre impact</button>
+            <button class="donation-popup-tab" data-panel="roadmap-panel" type="button">La suite</button>
+            <button class="donation-popup-tab" data-panel="faq-panel" type="button">Questions</button>
+          </div>
+          <div id="impact-panel" class="donation-popup-panel active">
+            <ul class="donation-popup-list">
+              <li>du temps consacré aux correctifs et à la stabilité</li>
+              <li>de nouvelles fonctionnalités plus régulièrement</li>
+              <li>le maintien des services et de la compatibilité Minecraft</li>
+            </ul>
+          </div>
+          <div id="roadmap-panel" class="donation-popup-panel">
+            <div class="donation-popup-roadmap">
+              <div><strong>Maintenant</strong> : fiabiliser le launcher et corriger les retours.</div>
+              <div><strong>Ensuite</strong> : améliorer les profils, les mods et les performances.</div>
+              <div><strong>À terme</strong> : ajouter davantage d'outils pour la communauté.</div>
+            </div>
+          </div>
+          <div id="faq-panel" class="donation-popup-panel">
+            <details class="donation-popup-faq"><summary>Le don est-il obligatoire ?</summary>Non. Velkora reste utilisable sans don.</details>
+            <details class="donation-popup-faq"><summary>À quoi sert le montant ?</summary>À soutenir le temps de développement, la maintenance et les services nécessaires au projet.</details>
+          </div>
+          <div class="donation-popup-impact">
+            <div><strong>Correctifs</strong>plus rapides</div>
+            <div><strong>Nouveautés</strong>plus fréquentes</div>
+            <div><strong>Serveurs</strong>et maintenance</div>
+          </div>
+          <div class="donation-popup-section-title">Choisissez un montant indicatif</div>
+          <div class="donation-popup-amounts">
+            <button class="donation-popup-amount" data-amount="2" type="button">2 €</button>
+            <button class="donation-popup-amount selected" data-amount="5" type="button">5 €</button>
+            <button class="donation-popup-amount" data-amount="10" type="button">10 €</button>
+            <button class="donation-popup-amount" data-amount="20" type="button">20 €</button>
+            <button class="donation-popup-amount" data-amount="custom" type="button">Autre</button>
+          </div>
+          <input class="donation-popup-custom" type="number" min="1" max="1000" step="1" placeholder="Montant personnalisé (€)" aria-label="Montant personnalisé">
+          <div class="donation-popup-choice">Avec 5 €, vous contribuez directement au temps de développement.</div>
+          <div class="donation-popup-progress" aria-label="Objectif mensuel de soutien"><span></span></div>
+          <button class="donation-popup-paypal" type="button">Soutenir avec 5 € sur PayPal</button>
+          <button class="donation-popup-later" type="button">Peut-être plus tard</button>
+          <div class="donation-popup-note">Paiement traité directement par PayPal. Velkora ne reçoit aucune donnée bancaire.</div>
+        </div>
+      `;
+
+      const closePopup = () => popup.remove();
+      popup.querySelector('.donation-popup-close').addEventListener('click', closePopup);
+      popup.querySelector('.donation-popup-later').addEventListener('click', closePopup);
+      popup.querySelectorAll('.donation-popup-tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          popup.querySelectorAll('.donation-popup-tab').forEach((button) => button.classList.remove('active'));
+          popup.querySelectorAll('.donation-popup-panel').forEach((panel) => panel.classList.remove('active'));
+          tab.classList.add('active');
+          popup.querySelector(`#${tab.dataset.panel}`).classList.add('active');
+        });
+      });
+      const amountText = popup.querySelector('.donation-popup-choice');
+      const paypalButton = popup.querySelector('.donation-popup-paypal');
+      const customAmount = popup.querySelector('.donation-popup-custom');
+      const updateAmount = (amount) => {
+        amountText.textContent = `Avec ${amount} €, vous contribuez directement au temps de développement.`;
+        paypalButton.textContent = `Soutenir avec ${amount} € sur PayPal`;
+      };
+      popup.querySelectorAll('.donation-popup-amount').forEach((amountButton) => {
+        amountButton.addEventListener('click', () => {
+          const amount = amountButton.dataset.amount;
+          popup.querySelectorAll('.donation-popup-amount').forEach((button) => button.classList.remove('selected'));
+          amountButton.classList.add('selected');
+          customAmount.classList.toggle('visible', amount === 'custom');
+          if (amount !== 'custom') updateAmount(amount);
+        });
+      });
+      customAmount.addEventListener('input', () => {
+        const amount = Number(customAmount.value);
+        if (amount > 0) updateAmount(amount);
+      });
+      popup.querySelector('.donation-popup-paypal').addEventListener('click', () => {
+        const selectedButtonAmount = popup.querySelector('.donation-popup-amount.selected')?.dataset.amount;
+        const selectedAmount = selectedButtonAmount === 'custom'
+          ? Number(customAmount.value)
+          : selectedButtonAmount;
+        if (selectedAmount === 'custom' || !selectedAmount || Number(selectedAmount) <= 0) return;
+        closePopup();
+        this.openPayPalDonation(selectedAmount);
+      });
+      popup.addEventListener('click', (event) => {
+        if (event.target === popup) closePopup();
+      });
+      document.body.appendChild(popup);
+    }, 5000);
   }
 
   async loadHomePageInfo() {
@@ -4901,7 +5184,7 @@ renderMainLayout() {
       }
       
       // 🎮 Utiliser le loader du profil sélectionné (qui a été mis à jour dans les mods)
-      const profileLoader = String(this.selectedProfile?.loader || 'vanilla').toLowerCase();
+      const profileLoader = this.getActiveLaunchLoader(this.selectedProfile?.version);
       const launchProfile = {
         ...this.selectedProfile,
         loader: profileLoader,

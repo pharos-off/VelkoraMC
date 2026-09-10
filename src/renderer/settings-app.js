@@ -1349,6 +1349,16 @@ function renderSettings() {
             </p>
           </div>
 
+          <div class="settings-card" style="border-color: rgba(250, 194, 19, 0.35); background: linear-gradient(135deg, rgba(250, 194, 19, 0.08), rgba(99, 102, 241, 0.08));">
+            <h3 style="display: flex; align-items: center; gap: 10px;"><i class="bi bi-heart-fill" style="color: #facc15;"></i> Soutenir le projet</h3>
+            <p style="color: #d1d5db; line-height: 1.8; margin-bottom: 18px;">
+              Je développe ${LauncherVersion.getName()} seul, sur mon temps libre. Chaque amélioration me demande beaucoup de temps et votre soutien m'aide à continuer le développement et la maintenance de l'application.
+            </p>
+            <button id="paypal-donate-btn" class="btn-primary" style="display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #0070ba, #003087);">
+              <i class="bi bi-paypal"></i> Faire un don avec PayPal
+            </button>
+          </div>
+
           <div class="settings-card">
             <h3>Description</h3>
             <p style="color: #d1d5db; line-height: 1.8;">
@@ -1480,6 +1490,20 @@ function renderSettings() {
       }
     });
   });
+
+  const paypalDonateBtn = document.getElementById('paypal-donate-btn');
+  if (paypalDonateBtn) {
+    paypalDonateBtn.addEventListener('click', () => {
+      const paypalUrl = 'https://paypal.me/PharosOff';
+      if (window.electron?.shell?.openExternal) {
+        Promise.resolve(window.electron.shell.openExternal(paypalUrl)).catch((error) => {
+          console.error('Impossible d\'ouvrir PayPal:', error);
+        });
+      } else {
+        ipcRenderer.send('open-external', paypalUrl);
+      }
+    });
+  }
 
   // ✅ SETUP RECHERCHE
   setupSearchFunctionality();

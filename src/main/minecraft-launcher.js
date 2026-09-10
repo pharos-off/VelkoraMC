@@ -73,44 +73,50 @@ class MinecraftLauncher {
     return null;
   }
 
-  resolveInstalledLoaderVersion(gameDirectory, minecraftVersion, loader) {
+  resolveInstalledLoaderVersion(gameDirectory, minecraftVersion, loader, fallbackGameDirectory = null) {
     const requestedLoader = String(loader || 'vanilla').toLowerCase();
     if (requestedLoader === 'vanilla') {
       return null;
     }
 
-    const versionsDir = path.join(gameDirectory, 'versions');
-    if (!fs.existsSync(versionsDir)) {
-      return null;
+    const candidates = [];
+    const searchDirectories = [gameDirectory];
+    if (fallbackGameDirectory && path.resolve(fallbackGameDirectory) !== path.resolve(gameDirectory)) {
+      searchDirectories.push(fallbackGameDirectory);
     }
 
-    const candidates = [];
-    for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
+    for (const searchDirectory of searchDirectories) {
+      const versionsDir = path.join(searchDirectory, 'versions');
+      if (!fs.existsSync(versionsDir)) continue;
 
-      const versionId = entry.name;
-      const jsonPath = path.join(versionsDir, versionId, `${versionId}.json`);
-      if (!fs.existsSync(jsonPath)) continue;
+      for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
 
-      try {
-        const versionJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-        const detectedLoader = this.inferVersionLoader(versionId, versionJson);
-        if (detectedLoader !== requestedLoader) continue;
+        const versionId = entry.name;
+        const jsonPath = path.join(versionsDir, versionId, `${versionId}.json`);
+        if (!fs.existsSync(jsonPath)) continue;
 
-        const baseVersion = this.extractBaseMinecraftVersion(versionId, versionJson);
-        const exactMatch = baseVersion === minecraftVersion || String(versionId).includes(String(minecraftVersion));
-        if (!exactMatch) continue;
+        try {
+          const versionJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+          const detectedLoader = this.inferVersionLoader(versionId, versionJson);
+          if (detectedLoader !== requestedLoader) continue;
 
-        const stats = fs.statSync(jsonPath);
-        candidates.push({
-          id: versionId,
-          loader: detectedLoader,
-          baseVersion,
-          jsonPath,
-          mtimeMs: stats.mtimeMs
-        });
-      } catch (error) {
-        console.warn(`⚠️ Impossible de lire la version ${versionId}: ${error.message}`);
+          const baseVersion = this.extractBaseMinecraftVersion(versionId, versionJson);
+          const exactMatch = baseVersion === minecraftVersion || String(versionId).includes(String(minecraftVersion));
+          if (!exactMatch) continue;
+
+          const stats = fs.statSync(jsonPath);
+          candidates.push({
+            id: versionId,
+            loader: detectedLoader,
+            baseVersion,
+            jsonPath,
+            gameDirectory: searchDirectory,
+            mtimeMs: stats.mtimeMs
+          });
+        } catch (error) {
+          console.warn(`⚠️ Impossible de lire la version ${versionId}: ${error.message}`);
+        }
       }
     }
 
@@ -495,7 +501,7 @@ class MinecraftLauncher {
 
   async launch(options) {
     const {
-      authData, version, ram, gameDirectory, javaPath, serverIP,
+      authData, version, ram, gameDirectory, fallbackGameDirectory, javaPath, serverIP,
       windowWidth, windowHeight, onProgress, onLog, onClose, loader
     } = options;
 
@@ -693,7 +699,12 @@ class MinecraftLauncher {
     }
 
     const requestedLoader = String(loader || 'vanilla').toLowerCase();
-    const customVersion = this.resolveInstalledLoaderVersion(gameDirectory, version, requestedLoader);
+    const customVersion = this.resolveInstalledLoaderVersion(
+      gameDirectory,
+      version,
+      requestedLoader,
+      fallbackGameDirectory
+    );
     if (requestedLoader !== 'vanilla' && !customVersion) {
       const errorMsg = `❌ Le loader ${requestedLoader} est selectionne pour Minecraft ${version}, mais aucune version moddee installee n'a ete trouvee dans le dossier versions.\n\nInstallez d'abord ${requestedLoader} pour cette version, puis relancez le jeu.`;
       if (onLog) onLog('error', errorMsg);
@@ -705,6 +716,8 @@ class MinecraftLauncher {
       console.log(`🧩 ${loaderLog}`);
       if (onLog) onLog('info', loaderLog);
     }
+
+    const launchGameDirectory = customVersion?.gameDirectory || gameDirectory;
 
     return new Promise((resolve, reject) => {
       // ✅ Valider authData
@@ -749,7 +762,7 @@ class MinecraftLauncher {
 
       const launchOptions = {
         authorization: authorization,
-        root: gameDirectory,
+        root: launchGameDirectory,
         javaPath: resolvedJava,
         version: {
           number: version,
@@ -877,18 +890,6 @@ class MinecraftLauncher {
           console.warn('⚠️ Could not patch child_process.spawn:', e && e.message);
         }
 
-        this.launcher.launch(launchOptions);
-
-        // ✅ Restore spawn after launching to avoid side-effects
-        try {
-          if (_patchedSpawn) {
-            child_process.spawn = origSpawn;
-            console.log('[JavaLaunch] Spawn patch removed');
-          }
-        } catch (e) {
-          // ignore
-        }
-
         this.launcher.on('debug', (e) => {
           try {
             if (e && typeof e === 'string' && (e.includes('Error') || e.includes('error'))) {
@@ -941,6 +942,20 @@ class MinecraftLauncher {
             console.error('Error in launch error handler:', e && (e.stack || e.message || e));
           }
         });
+
+        // Attach listeners before starting: Minecraft can exit immediately on
+        // invalid configuration and must still reset the launch state.
+        this.launcher.launch(launchOptions);
+
+        // ✅ Restore spawn after launching to avoid side-effects
+        try {
+          if (_patchedSpawn) {
+            child_process.spawn = origSpawn;
+            console.log('[JavaLaunch] Spawn patch removed');
+          }
+        } catch (e) {
+          // ignore
+        }
 
         // Considérer le lancement réussi après 1 seconde (une seule fois)
         setTimeout(() => {
